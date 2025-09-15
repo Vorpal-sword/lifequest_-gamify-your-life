@@ -1,11 +1,5 @@
-import type {
-  User as AppUser,
-  Task,
-  Group,
-  Habit,
-  AuthResponse,
-} from "../types.ts";
-import type { GoogleIdentityJwtPayload } from "../types.ts";
+import type { User as AppUser, Task, Group, Habit } from "../types";
+import type { GoogleIdentityJwtPayload } from "../types";
 
 // This should be the base URL of your real backend server.
 // For local development, this might be 'http://localhost:8080/api'
@@ -69,10 +63,30 @@ async function apiClient<T>(
 // The backend will handle the logic of finding or creating a user.
 export async function authenticateWithGoogle(
   googleToken: string
-): Promise<AuthResponse> {
+): Promise<{
+  token: string;
+  user: AppUser;
+  tasks: Task[];
+  habits: Habit[];
+  groups: Group[];
+  allUsers: AppUser[];
+}> {
   return apiClient("/auth/google", {
     method: "POST",
     body: JSON.stringify({ token: googleToken }),
+  });
+}
+
+// Restore session using a stored JWT
+export async function restoreSession(): Promise<{
+  user: AppUser;
+  tasks: Task[];
+  habits: Habit[];
+  groups: Group[];
+  allUsers: AppUser[];
+}> {
+  return apiClient("/session/restore", {
+    method: "GET",
   });
 }
 
@@ -94,15 +108,23 @@ export const addHabit = (
   habitData: Omit<Habit, "id" | "history" | "startDate">
 ): Promise<Habit> =>
   apiClient("/habits", { method: "POST", body: JSON.stringify(habitData) });
+export const toggleHabitCompletion = (
+  habitId: string,
+  dayNumber: number
+): Promise<void> =>
+  apiClient(`/habits/${habitId}/toggle`, {
+    method: "PUT",
+    body: JSON.stringify({ dayNumber }),
+  });
 export const updateUser = (
   userData: Partial<Pick<AppUser, "name" | "avatarUrl" | "savedAvatars">>
 ): Promise<AppUser> =>
   apiClient("/user", { method: "PATCH", body: JSON.stringify(userData) });
-export const addFriend = (friendId: string): Promise<void> =>
+export const addFriend = (friendId: string): Promise<AppUser> =>
   apiClient("/friends", { method: "POST", body: JSON.stringify({ friendId }) });
 export const createGroup = (
   groupData: Omit<Group, "id" | "leaderId">
-): Promise<Group> =>
+): Promise<{ group: Group; task: Task | null }> =>
   apiClient("/groups", { method: "POST", body: JSON.stringify(groupData) });
 export const updateGroup = (
   groupId: string,

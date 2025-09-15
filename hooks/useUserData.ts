@@ -7,9 +7,9 @@ import type {
   Group,
   AnalyticsData,
   Habit,
-  AuthResponse,
-} from "../types.ts";
-import * as api from "../services/api.ts";
+  GoogleIdentityJwtPayload,
+} from "../types";
+import * as api from "../services/api";
 
 export interface UserData {
   isLoading: boolean;
@@ -27,21 +27,18 @@ export interface UserData {
     taskId: string,
     direction: "increment" | "decrement"
   ) => Promise<void>;
-  addTask: (task: Omit<Task, "id" | "completed">) => Promise<unknown>;
+  addTask: (task: Omit<Task, "id" | "completed">) => Promise<void>;
   addHabit: (
     habitData: Omit<Habit, "id" | "history" | "startDate">
-  ) => Promise<unknown>;
+  ) => Promise<void>;
   toggleHabitCompletion: (habitId: string, dayNumber: number) => Promise<void>;
   updateUser: (
     userData: Partial<Pick<User, "name" | "avatarUrl" | "savedAvatars">>
-  ) => Promise<unknown>;
-  addFriend: (friendId: string) => Promise<unknown>;
-  createGroup: (groupData: Omit<Group, "id" | "leaderId">) => Promise<unknown>;
-  updateGroup: (
-    groupId: string,
-    newGroupData: Partial<Group>
-  ) => Promise<unknown>;
-  leaveGroup: (groupId: string) => Promise<unknown>;
+  ) => Promise<void>;
+  addFriend: (friendId: string) => Promise<void>;
+  createGroup: (groupData: Omit<Group, "id" | "leaderId">) => Promise<void>;
+  updateGroup: (groupId: string, newGroupData: Partial<Group>) => Promise<void>;
+  leaveGroup: (groupId: string) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserData | undefined>(undefined);
@@ -49,7 +46,7 @@ const UserDataContext = createContext<UserData | undefined>(undefined);
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [isLoading, setIsLoading] = useState(false); // Set to false initially
+  const [isLoading, setIsLoading] = useState(true); // Start loading to check for session
   const [user, setUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -57,25 +54,46 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [analytics, setAnalytics] = useState<AnalyticsData[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  // Note: Session persistence logic (e.g., re-fetching user on page load with a stored token)
-  // would go here in a full production app. For simplicity, we are skipping it.
-  // A page refresh will require logging in again.
+  // Attempt to restore session on initial app load
+  useEffect(() => {
+    const attemptRestoreSession = async () => {
+      const token = localStorage.getItem("authToken");
+      if (token) {
+        try {
+          const { user, tasks, habits, groups, allUsers } =
+            await api.restoreSession();
+          setUser(user);
+          setTasks(tasks || []);
+          setHabits(habits || []);
+          setGroups(groups || []);
+          setAllUsers(allUsers || []);
+        } catch (error) {
+          console.error("Session restore failed:", error);
+          localStorage.removeItem("authToken"); // Token is invalid, remove it
+        }
+      }
+      setIsLoading(false); // Stop loading after attempt
+    };
+
+    attemptRestoreSession();
+  }, []); // Empty dependency array means it runs only once on mount
 
   const login = async (googleResponse: any) => {
     setIsLoading(true);
     try {
       const googleToken = googleResponse.credential;
       // The backend will verify the token, find/create a user, and return a session token + initial data
-      const data: AuthResponse = await api.authenticateWithGoogle(googleToken);
+      const { token, user, tasks, habits, groups, allUsers } =
+        await api.authenticateWithGoogle(googleToken);
 
       // Store our own session token, not the entire user object
-      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("authToken", token);
 
-      setUser(data.user);
-      setTasks(data.tasks);
-      setHabits(data.habits || []);
-      setGroups(data.groups || []);
-      setAllUsers(data.allUsers || []);
+      setUser(user);
+      setTasks(tasks);
+      setHabits(habits || []);
+      setGroups(groups || []);
+      setAllUsers(allUsers || []);
     } catch (error) {
       console.error("Login process failed:", error);
       // Clear any potentially stale tokens
@@ -101,14 +119,25 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setAllUsers([]);
   };
 
-  // --- Real-time Updates (Placeholder) ---
-  useEffect(() => {
-    if (!user) return;
-    // In a real app, you would connect to your WebSocket server here
-    // const socket = io('YOUR_SERVER_URL', { query: { userId: user.id } });
-    // socket.on('connect', () => console.log('WebSocket connected!'));
-    // return () => { socket.disconnect(); };
-  }, [user]);
+  const addTask = async (taskData: Omit<Task, "id" | "completed">) => {
+    try {
+      const newTask = await api.addTask(taskData);
+      setTasks((prev) => [...prev, newTask]);
+    } catch (error) {
+      console.error("Failed to add task:", error);
+    }
+  };
+
+  const addHabit = async (
+    habitData: Omit<Habit, "id" | "history" | "startDate">
+  ) => {
+    try {
+      const newHabit = await api.addHabit(habitData);
+      setHabits((prev) => [...prev, newHabit]);
+    } catch (error) {
+      console.error("Failed to add habit:", error);
+    }
+  };
 
   // --- Optimistic UI Updates ---
   const toggleTaskCompletion = async (taskId: string) => {
@@ -156,6 +185,102 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const toggleHabitCompletion = async (habitId: string, dayNumber: number) => {
+    const originalHabits = habits;
+    const updatedHabits = habits.map((h) => {
+      if (h.id === habitId) {
+        const newHistory = { ...h.history };
+        const currentStatus = newHistory[dayNumber];
+        newHistory[dayNumber] =
+          currentStatus === "completed" ? "pending" : "completed";
+        return { ...h, history: newHistory };
+      }
+      return h;
+    });
+    setHabits(updatedHabits);
+
+    try {
+      await api.toggleHabitCompletion(habitId, dayNumber);
+    } catch (error) {
+      console.error("Failed to toggle habit completion:", error);
+      setHabits(originalHabits); // Revert on error
+    }
+  };
+
+  const updateUser = async (
+    userData: Partial<Pick<User, "name" | "avatarUrl" | "savedAvatars">>
+  ) => {
+    if (!user) return;
+    const originalUser = { ...user };
+    setUser({ ...user, ...userData }); // Optimistic update
+    try {
+      const updatedUser = await api.updateUser(userData);
+      setUser(updatedUser); // Sync with server
+    } catch (error) {
+      console.error("Failed to update user:", error);
+      setUser(originalUser); // Revert
+    }
+  };
+
+  const addFriend = async (friendId: string) => {
+    if (!user) return;
+    const originalUser = { ...user };
+    setUser({ ...user, friends: [...user.friends, friendId] }); // Optimistic update
+    try {
+      const updatedUser = await api.addFriend(friendId);
+      setUser(updatedUser); // Sync with server
+    } catch (error) {
+      console.error("Failed to add friend:", error);
+      setUser(originalUser); // Revert
+    }
+  };
+
+  const createGroup = async (groupData: Omit<Group, "id" | "leaderId">) => {
+    try {
+      const { group, task } = await api.createGroup(groupData);
+      if (group && group.id) {
+        setGroups((prev) => [...prev, group]);
+      }
+      if (task && task.id) {
+        setTasks((prev) => [...prev, task]);
+      }
+    } catch (error) {
+      console.error("Failed to create group:", error);
+    }
+  };
+
+  const updateGroup = async (groupId: string, newGroupData: Partial<Group>) => {
+    const originalGroups = [...groups];
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, ...newGroupData } : g))
+    ); // Optimistic
+    try {
+      const updatedGroup = await api.updateGroup(groupId, newGroupData);
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? updatedGroup : g))
+      ); // Sync
+    } catch (error) {
+      console.error("Failed to update group:", error);
+      setGroups(originalGroups); // Revert
+    }
+  };
+
+  const leaveGroup = async (groupId: string) => {
+    if (!user) return;
+    const originalGroups = [...groups];
+    const originalTasks = [...tasks];
+    setGroups((prev) => prev.filter((g) => g.id !== groupId)); // Optimistic
+    try {
+      await api.leaveGroup(groupId);
+      // On success, also remove the group's quest task from state
+      setTasks((prev) => prev.filter((t) => t.questOriginGroupId !== groupId));
+    } catch (error) {
+      console.error("Failed to leave group:", error);
+      setGroups(originalGroups); // Revert
+      setTasks(originalTasks);
+    }
+  };
+
   const value: UserData = {
     isLoading,
     user,
@@ -163,22 +288,20 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     habits,
     groups,
     analytics,
-    leaderboard: [], // This would be calculated from allUsers on the backend
+    leaderboard: [],
     allUsers,
     login,
     logout,
     toggleTaskCompletion,
     updateTaskProgress,
-    addTask: api.addTask,
-    addHabit: api.addHabit,
-    toggleHabitCompletion: async (habitId: string, dayNumber: number) => {
-      /* optimistic update needed */
-    },
-    updateUser: api.updateUser,
-    addFriend: api.addFriend,
-    createGroup: api.createGroup,
-    updateGroup: api.updateGroup,
-    leaveGroup: api.leaveGroup,
+    addTask,
+    addHabit,
+    toggleHabitCompletion,
+    updateUser,
+    addFriend,
+    createGroup,
+    updateGroup,
+    leaveGroup,
   };
 
   return React.createElement(UserDataContext.Provider, { value }, children);
