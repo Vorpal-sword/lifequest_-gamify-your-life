@@ -1,0 +1,6 @@
+Flask
+pymongo[srv]
+python-dotenv
+Flask-Cors
+google-auth
+PyJWT

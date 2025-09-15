@@ -1,0 +1,7 @@
+{
+  "name": "LifeQuest: Gamify Your Life",
+  "description": "A social productivity application that turns your tasks and habits into a fun, gamified experience. Complete goals, earn XP, level up, and compete with friends to become more productive.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
