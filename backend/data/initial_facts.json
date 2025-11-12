@@ -1,0 +1,30 @@
+{
+  "facts": [
+    {"name": "user_level", "value": 0, "confidence": 1.0},
+    {"name": "user_xp", "value": 0, "confidence": 1.0},
+    {"name": "total_tasks_completed", "value": 0, "confidence": 1.0},
+    {"name": "tasks_completed_today", "value": 0, "confidence": 1.0},
+    {"name": "tasks_completed_this_week", "value": 0, "confidence": 1.0},
+    {"name": "streak_days", "value": 0, "confidence": 1.0},
+    {"name": "work_hours_today", "value": 0, "confidence": 1.0},
+    {"name": "sitting_hours_today", "value": 0, "confidence": 1.0},
+    {"name": "physical_activity_today", "value": 0, "confidence": 1.0},
+    {"name": "stress_level", "value": 5, "confidence": 0.8},
+    {"name": "work_life_balance_score", "value": 50, "confidence": 0.7},
+    {"name": "friends_count", "value": 0, "confidence": 1.0},
+    {"name": "account_age_days", "value": 1, "confidence": 1.0},
+    {"name": "has_achievement_first_steps", "value": false, "confidence": 1.0},
+    {"name": "has_badge_early_bird", "value": false, "confidence": 1.0},
+    {"name": "has_achievement_balanced", "value": false, "confidence": 1.0},
+    {"name": "meditation_done_today", "value": false, "confidence": 1.0},
+    {"name": "anniversary_celebrated", "value": false, "confidence": 1.0},
+    {"name": "streak_bonus_active", "value": false, "confidence": 1.0},
+    {"name": "prefers_team_quests", "value": false, "confidence": 1.0},
+    {"name": "career_goal_active", "value": false, "confidence": 1.0},
+    {"name": "personalization_active", "value": false, "confidence": 1.0},
+    {"name": "user_chronotype", "value": "neutral", "confidence": 0.5},
+    {"name": "favorite_category", "value": null, "confidence": 1.0},
+    {"name": "current_hour", "value": 14, "confidence": 1.0},
+    {"name": "day_of_week", "value": "Wednesday", "confidence": 1.0}
+  ]
+}

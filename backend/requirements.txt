@@ -4,3 +4,4 @@ python-dotenv
 Flask-Cors
 google-auth
 PyJWT
+google-generativeai

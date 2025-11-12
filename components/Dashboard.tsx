@@ -1,4 +1,5 @@
 import React from "react";
+import AIRecommendations from "./AIRecommendations";
 import {
   BarChart,
   Bar,

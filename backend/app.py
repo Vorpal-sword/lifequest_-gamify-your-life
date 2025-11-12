@@ -9,9 +9,12 @@ from datetime import datetime, timedelta, timezone
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import uuid
+from dotenv import load_dotenv
+
+# --- ІМПОРТ ДЛЯ AI СЕРВІСУ ---
+from ai_quest_service import get_ai_service
 
 # --- КОНФІГУРАЦІЯ ---
-from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
@@ -405,6 +408,91 @@ def leave_group_route(current_user, group_id):
         return jsonify({'message': 'Successfully left and deleted empty group'}), 200
 
     return jsonify({'message': 'Successfully left group'}), 200
+
+# --- МАРШРУТИ ІНТЕГРАЦІЇ AI ---
+
+@app.route('/api/ai/analyze', methods=['POST'])
+def ai_analyze():
+    """
+    AI аналіз користувача
+    """
+    try:
+        # Отримуємо дані з запиту
+        user_data = request.get_json()
+        
+        if not user_data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        # Отримуємо AI сервіс
+        ai_service = get_ai_service()
+        
+        # Аналізуємо користувача
+        recommendations = ai_service.analyze_user(user_data)
+        
+        return jsonify({
+            'success': True,
+            'data': recommendations
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in AI analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/health', methods=['GET'])
+def ai_health():
+    """Перевірка роботи AI системи"""
+    try:
+        ai_service = get_ai_service()
+        return jsonify({
+            'status': 'ok',
+            'message': 'AI system is running',
+            'rules_count': len(ai_service.kb.rules)
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/ai/test', methods=['GET'])
+def ai_test():
+    """Тестовий endpoint для перевірки AI"""
+    try:
+        ai_service = get_ai_service()
+        
+        # Тестові дані
+        test_user = {
+            'level': 0,
+            'xp': 0,
+            'total_tasks': 0,
+            'tasks_today': 0,
+            'streak_days': 0
+        }
+        
+        result = ai_service.analyze_user(test_user)
+        
+        return jsonify({
+            'success': True,
+            'test_data': test_user,
+            'result': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 # --- ЗАПУСК СЕРВЕРА ---

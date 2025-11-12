@@ -1,0 +1,277 @@
+{
+  "rules": [
+    {
+      "id": "R001",
+      "priority": 100,
+      "description": "Присвоїти статус 'Новачок' користувачу без досвіду",
+      "conditions": [
+        {"fact": "user_level", "operator": "==", "value": 0},
+        {"fact": "total_tasks_completed", "operator": "==", "value": 0}
+      ],
+      "actions": [
+        {"fact": "user_status", "value": "Новачок"},
+        {"fact": "available_quests", "value": ["Перше завдання", "Знайомство з системою"]}
+      ]
+    },
+    {
+      "id": "R002",
+      "priority": 95,
+      "description": "Підвищити рівень користувача при досягненні 100 XP",
+      "conditions": [
+        {"fact": "user_xp", "operator": ">=", "value": 100},
+        {"fact": "user_level", "operator": "<", "value": 2}
+      ],
+      "actions": [
+        {"fact": "user_level", "value": 2},
+        {"fact": "level_up_reward", "value": 50}
+      ]
+    },
+    {
+      "id": "R003",
+      "priority": 90,
+      "description": "Присвоїти досягнення 'Перші кроки' після виконання 5 завдань",
+      "conditions": [
+        {"fact": "total_tasks_completed", "operator": ">=", "value": 5},
+        {"fact": "has_achievement_first_steps", "operator": "==", "value": false}
+      ],
+      "actions": [
+        {"fact": "has_achievement_first_steps", "value": true},
+        {"fact": "achievement_earned", "value": "Перші кроки"},
+        {"fact": "user_xp", "value": 25}
+      ]
+    },
+    {
+      "id": "R004",
+      "priority": 85,
+      "description": "Запропонувати складніші квести досвідченому користувачу",
+      "conditions": [
+        {"fact": "user_level", "operator": ">=", "value": 2},
+        {"fact": "total_tasks_completed", "operator": ">=", "value": 10}
+      ],
+      "actions": [
+        {"fact": "user_status", "value": "Досвідчений"},
+        {"fact": "available_quests", "value": ["Тижневий челендж", "Марафон продуктивності", "Майстер часу"]}
+      ]
+    },
+    {
+      "id": "R005",
+      "priority": 80,
+      "description": "Визначити продуктивний день при виконанні 3+ завдань",
+      "conditions": [
+        {"fact": "tasks_completed_today", "operator": ">=", "value": 3}
+      ],
+      "actions": [
+        {"fact": "today_productivity", "value": "Високий"},
+        {"fact": "daily_bonus", "value": 10}
+      ]
+    },
+    {
+      "id": "R006",
+      "priority": 75,
+      "description": "Нагадування про перерву при тривалій роботі",
+      "conditions": [
+        {"fact": "work_hours_today", "operator": ">", "value": 4},
+        {"fact": "last_break_hours_ago", "operator": ">", "value": 2}
+      ],
+      "actions": [
+        {"fact": "reminder_type", "value": "Час для перерви!"},
+        {"fact": "suggested_activity", "value": "Зробіть 15-хвилинну перерву"}
+      ]
+    },
+    {
+      "id": "R007",
+      "priority": 70,
+      "description": "Присвоїти бейдж 'Рання пташка' за ранні завдання",
+      "conditions": [
+        {"fact": "tasks_completed_before_9am", "operator": ">=", "value": 3},
+        {"fact": "has_badge_early_bird", "operator": "==", "value": false}
+      ],
+      "actions": [
+        {"fact": "has_badge_early_bird", "value": true},
+        {"fact": "badge_earned", "value": "Рання пташка"},
+        {"fact": "user_xp", "value": 15}
+      ]
+    },
+    {
+      "id": "R008",
+      "priority": 65,
+      "description": "Активувати бонус за серію днів",
+      "conditions": [
+        {"fact": "streak_days", "operator": ">=", "value": 7}
+      ],
+      "actions": [
+        {"fact": "streak_bonus_active", "value": true},
+        {"fact": "xp_multiplier", "value": 1.5},
+        {"fact": "streak_milestone", "value": "Тижнева серія!"}
+      ]
+    },
+    {
+      "id": "R009",
+      "priority": 60,
+      "description": "Запропонувати командний квест для соціальних користувачів",
+      "conditions": [
+        {"fact": "user_level", "operator": ">=", "value": 3},
+        {"fact": "friends_count", "operator": ">", "value": 0},
+        {"fact": "prefers_team_quests", "operator": "==", "value": true}
+      ],
+      "actions": [
+        {"fact": "available_quests", "value": ["Командний челендж", "Співпраця місяця"]},
+        {"fact": "quest_type", "value": "team"}
+      ]
+    },
+    {
+      "id": "R010",
+      "priority": 55,
+      "description": "Рекомендувати фізичну активність при тривалій сидячій роботі",
+      "conditions": [
+        {"fact": "sitting_hours_today", "operator": ">", "value": 6},
+        {"fact": "physical_activity_today", "operator": "==", "value": 0}
+      ],
+      "actions": [
+        {"fact": "health_recommendation", "value": "Рекомендована фізична активність"},
+        {"fact": "suggested_quest", "value": "20 хвилин ходьби"},
+        {"fact": "health_priority", "value": "high"}
+      ]
+    },
+    {
+      "id": "R011",
+      "priority": 50,
+      "description": "Відзначити майстерність при 50+ виконаних завданнях",
+      "conditions": [
+        {"fact": "total_tasks_completed", "operator": ">=", "value": 50},
+        {"fact": "user_status", "operator": "!=", "value": "Майстер"}
+      ],
+      "actions": [
+        {"fact": "user_status", "value": "Майстер"},
+        {"fact": "status_reward", "value": 100},
+        {"fact": "unlock_feature", "value": "Персоналізовані квести"}
+      ]
+    },
+    {
+      "id": "R012",
+      "priority": 45,
+      "description": "Визначити категорію завдання як пріоритетну",
+      "conditions": [
+        {"fact": "task_category", "operator": "==", "value": "career"},
+        {"fact": "career_goal_active", "operator": "==", "value": true}
+      ],
+      "actions": [
+        {"fact": "task_priority", "value": "high"},
+        {"fact": "xp_reward_multiplier", "value": 2.0}
+      ]
+    },
+    {
+      "id": "R013",
+      "priority": 40,
+      "description": "Запропонувати медитацію при високому рівні стресу",
+      "conditions": [
+        {"fact": "stress_level", "operator": ">", "value": 7},
+        {"fact": "meditation_done_today", "operator": "==", "value": false}
+      ],
+      "actions": [
+        {"fact": "wellness_recommendation", "value": "Медитація"},
+        {"fact": "suggested_duration", "value": 10},
+        {"fact": "wellness_quest", "value": "Хвилина для себе"}
+      ]
+    },
+    {
+      "id": "R014",
+      "priority": 35,
+      "description": "Активувати вечірній режим для нічних сов",
+      "conditions": [
+        {"fact": "current_hour", "operator": ">=", "value": 22},
+        {"fact": "user_chronotype", "operator": "==", "value": "night_owl"}
+      ],
+      "actions": [
+        {"fact": "interface_mode", "value": "evening"},
+        {"fact": "productivity_bonus_active", "value": true},
+        {"fact": "optimal_work_time", "value": "night"}
+      ]
+    },
+    {
+      "id": "R015",
+      "priority": 30,
+      "description": "Запропонувати навчальні квести при низькій активності",
+      "conditions": [
+        {"fact": "tasks_completed_this_week", "operator": "<", "value": 5},
+        {"fact": "account_age_days", "operator": ">", "value": 7}
+      ],
+      "actions": [
+        {"fact": "engagement_status", "value": "low"},
+        {"fact": "suggested_content", "value": "Навчальні матеріали"},
+        {"fact": "available_quests", "value": ["Мотиваційний квест", "Поверни ритм"]}
+      ]
+    },
+    {
+      "id": "R016",
+      "priority": 25,
+      "description": "Досягнення за баланс робота-життя",
+      "conditions": [
+        {"fact": "work_life_balance_score", "operator": ">=", "value": 80},
+        {"fact": "has_achievement_balanced", "operator": "==", "value": false}
+      ],
+      "actions": [
+        {"fact": "has_achievement_balanced", "value": true},
+        {"fact": "achievement_earned", "value": "Гармонія життя"},
+        {"fact": "user_xp", "value": 50}
+      ]
+    },
+    {
+      "id": "R017",
+      "priority": 20,
+      "description": "Персоналізувати рекомендації на основі історії",
+      "conditions": [
+        {"fact": "total_tasks_completed", "operator": ">=", "value": 30},
+        {"fact": "favorite_category", "operator": "!=", "value": null}
+      ],
+      "actions": [
+        {"fact": "personalization_active", "value": true},
+        {"fact": "recommended_category", "value": "favorite_category"},
+        {"fact": "smart_suggestions_enabled", "value": true}
+      ]
+    },
+    {
+      "id": "R018",
+      "priority": 15,
+      "description": "Щотижневий звіт для активних користувачів",
+      "conditions": [
+        {"fact": "day_of_week", "operator": "==", "value": "Sunday"},
+        {"fact": "tasks_completed_this_week", "operator": ">", "value": 0}
+      ],
+      "actions": [
+        {"fact": "generate_weekly_report", "value": true},
+        {"fact": "report_type", "value": "weekly_summary"},
+        {"fact": "include_achievements", "value": true}
+      ]
+    },
+    {
+      "id": "R019",
+      "priority": 10,
+      "description": "Експертний статус при 200+ завданнях",
+      "conditions": [
+        {"fact": "total_tasks_completed", "operator": ">=", "value": 200},
+        {"fact": "user_level", "operator": ">=", "value": 10}
+      ],
+      "actions": [
+        {"fact": "user_status", "value": "Експерт"},
+        {"fact": "unlock_feature", "value": "Власні правила"},
+        {"fact": "mentor_mode_available", "value": true}
+      ]
+    },
+    {
+      "id": "R020",
+      "priority": 5,
+      "description": "Святкувати річницю використання додатку",
+      "conditions": [
+        {"fact": "account_age_days", "operator": ">=", "value": 365},
+        {"fact": "anniversary_celebrated", "operator": "==", "value": false}
+      ],
+      "actions": [
+        {"fact": "anniversary_celebrated", "value": true},
+        {"fact": "special_reward", "value": "Річна нагорода"},
+        {"fact": "user_xp", "value": 500},
+        {"fact": "unlock_feature", "value": "Ексклюзивні квести"}
+      ]
+    }
+  ]
+}
