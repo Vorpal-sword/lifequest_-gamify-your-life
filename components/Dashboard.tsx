@@ -1,5 +1,11 @@
+/**
+ * Dashboard.tsx
+ * Головна інформаційна панель.
+ * Тепер приймає 'data' (типу UserData) та 'token' як окремі пропси.
+ */
+
 import React from "react";
-import AIRecommendations from "./AIRecommendations";
+import AIRecommendations from "./AIRecommendations"; // Переконайтеся, що шлях правильний
 import {
   BarChart,
   Bar,
@@ -9,23 +15,78 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import type { UserData } from "../hooks/useUserData.ts";
-import Card from "./ui/Card.tsx";
-import ProgressBar from "./ui/ProgressBar.tsx";
-import TaskItem from "./tasks/TaskItem.tsx";
+import type { UserData } from "../hooks/useUserData.ts"; // Припускаємо, що цей тип існує
+import Card from "./ui/Card.tsx"; // Переконайтеся, що шлях правильний
+import ProgressBar from "./ui/ProgressBar.tsx"; // Переконайтеся, що шлях правильний
+import TaskItem from "./tasks/TaskItem.tsx"; // Переконайтеся, що шлях правильний
 
-const Dashboard: React.FC<{ data: UserData }> = ({ data }) => {
+// --- 1. ОНОВЛЕННЯ ІНТЕРФЕЙСУ PROPS ---
+// Нам потрібно приймати 'data' (що відповідає типу UserData)
+// і 'token' (який, ймовірно, має тип string | null)
+interface DashboardProps {
+  data: UserData;
+  token: string | null; // Додаємо 'token' сюди
+}
+
+// Припускаємо, що ваш тип UserData виглядає приблизно так:
+/*
+interface User {
+  name: string;
+  avatarUrl: string;
+  level: number;
+  xp: number;
+  xpToNextLevel: number;
+  // ...інші поля user
+}
+interface Task {
+  id: string;
+  type: 'daily' | 'quest';
+  completed: boolean;
+  // ...інші поля task
+}
+interface AnalyticsData {
+  day: string;
+  xp: number;
+}
+export interface UserData {
+  user: User | null;
+  tasks: Task[];
+  analytics: AnalyticsData[];
+  toggleTaskCompletion: (taskId: string) => void;
+  // ...інші поля та методи з вашого хука
+}
+*/
+
+// --- 2. ОНОВЛЕННЯ КОМПОНЕНТА ---
+const Dashboard: React.FC<DashboardProps> = ({ data, token }) => {
+  // 3. 'token' більше не потрібно діставати з 'data'
   const { user, tasks, analytics, toggleTaskCompletion } = data;
 
-  // Ensure user is not null before rendering
-  if (!user) return null;
+  // Перевірка на випадок, якщо 'user' ще не завантажено
+  if (!user) {
+    return <div>Loading user data...</div>;
+  }
 
   const todayTasks = tasks.filter((t) => t.type === "daily").slice(0, 3);
+
+  // Дані "опитування", яких немає на сервері (приклад)
+  // TODO: Отримувати ці дані з модального вікна або форми
+  const surveyData = {
+    stress_level: 5,
+    sitting_hours: 3,
+  };
 
   return (
     <div className="p-4 space-y-6">
       <Header user={user} />
 
+      {/* 4. ПЕРЕВІРКА TOKEN 
+          Рендеримо AI-рекомендації, лише якщо токен існує.
+          Ми передаємо 'token', який отримали з props.
+      */}
+      {token && <AIRecommendations authToken={token} surveyData={surveyData} />}
+
+      {/* Решта вашого дашборду */}
       <Card>
         <h2 className="text-xl font-bold font-display mb-3">Today's Focus</h2>
         <div className="space-y-3">
@@ -85,8 +146,10 @@ const Dashboard: React.FC<{ data: UserData }> = ({ data }) => {
   );
 };
 
-const Header: React.FC<{ user: UserData["user"] }> = ({ user }) => {
-  if (!user) return null;
+// Тип для 'user' всередині 'UserData'
+type User = NonNullable<UserData["user"]>;
+
+const Header: React.FC<{ user: User }> = ({ user }) => {
   return (
     <Card className="flex items-center space-x-4">
       <img

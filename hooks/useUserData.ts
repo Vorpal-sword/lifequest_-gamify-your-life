@@ -20,6 +20,7 @@ export interface UserData {
   analytics: AnalyticsData[];
   leaderboard: LeaderboardEntry[];
   allUsers: User[];
+  token: string | null; // ✅ 1. ДОДАНО 'token' ДО ІНТЕРФЕЙСУ
   login: (googleResponse: any) => Promise<void>;
   logout: () => Promise<void>;
   toggleTaskCompletion: (taskId: string) => Promise<void>;
@@ -47,6 +48,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [isLoading, setIsLoading] = useState(true); // Start loading to check for session
+  // ✅ 2. ДОДАНО СТЕЙТ ДЛЯ 'token', ЯКИЙ БЕРЕ ЗНАЧЕННЯ З LOCALSTORAGE
+  const [token, setToken] = useState<string | null>(() =>
+    localStorage.getItem("authToken")
+  );
   const [user, setUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -57,7 +62,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
   // Attempt to restore session on initial app load
   useEffect(() => {
     const attemptRestoreSession = async () => {
-      const token = localStorage.getItem("authToken");
+      // 'token' вже є у нашому стейті завдяки useState вище
       if (token) {
         try {
           const { user, tasks, habits, groups, allUsers } =
@@ -70,13 +75,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
         } catch (error) {
           console.error("Session restore failed:", error);
           localStorage.removeItem("authToken"); // Token is invalid, remove it
+          setToken(null); // ✅ 3. ОЧИЩУЄМО СТЕЙТ
         }
       }
       setIsLoading(false); // Stop loading after attempt
     };
 
     attemptRestoreSession();
-  }, []); // Empty dependency array means it runs only once on mount
+  }, []); // Пустий масив залежностей - це нормально, токен ініціалізується в useState
 
   const login = async (googleResponse: any) => {
     setIsLoading(true);
@@ -86,8 +92,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
       const { token, user, tasks, habits, groups, allUsers } =
         await api.authenticateWithGoogle(googleToken);
 
-      // Store our own session token, not the entire user object
+      // Store our own session token
       localStorage.setItem("authToken", token);
+      setToken(token); // ✅ 4. ВСТАНОВЛЮЄМО 'token' В СТЕЙТ
 
       setUser(user);
       setTasks(tasks);
@@ -98,6 +105,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("Login process failed:", error);
       // Clear any potentially stale tokens
       localStorage.removeItem("authToken");
+      setToken(null); // ✅ 5. ОЧИЩУЄМО СТЕЙТ ПРИ ПОМИЛЦІ
     } finally {
       setIsLoading(false);
     }
@@ -110,6 +118,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     localStorage.removeItem("authToken");
+    setToken(null); // ✅ 6. ОЧИЩУЄМО 'token' ЗІ СТЕЙТУ
 
     // Reset all application state
     setUser(null);
@@ -144,20 +153,30 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.isCounter) return;
 
+    // 1. Зберігаємо оригінальний стан не лише завдань, але й користувача
     const originalTasks = tasks;
+    const originalUser = user; // <-- ДОДАНО
+
+    // 2. Оптимістичне оновлення списку завдань
     const updatedTasks = tasks.map((t) =>
       t.id === taskId ? { ...t, completed: !t.completed } : t
     );
     setTasks(updatedTasks);
 
     try {
-      await api.toggleTaskCompletion(taskId);
+      // 3. Викликаємо API і, ЩО НАЙВАЖЛИВІШЕ, отримуємо відповідь
+      const updatedUser = await api.toggleTaskCompletion(taskId); // <-- ЗМІНЕНО
+
+      // 4. Оновлюємо стан 'user' даними з сервера (з новим XP!)
+      setUser(updatedUser); // <-- ДОДАНО
     } catch (error) {
       console.error("Failed to toggle task:", error);
-      setTasks(originalTasks); // Revert on error
+      // 5. Відкочуємо обидва стани у разі помилки
+      setTasks(originalTasks);
+      setUser(originalUser); // <-- ДОДАНО
     }
   };
-
+  // НОВА
   const updateTaskProgress = async (
     taskId: string,
     direction: "increment" | "decrement"
@@ -166,6 +185,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!task || !task.isCounter) return;
 
     const originalTasks = tasks;
+    const originalUser = user; // <-- ДОДАНО
+
     const currentProgress = task.progress || 0;
     const newProgress =
       direction === "increment"
@@ -178,15 +199,25 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setTasks(updatedTasks);
 
     try {
-      await api.updateTaskProgress(taskId, newProgress);
+      // (Примітка: в ідеалі, ваш 'api.updateTaskProgress' теж має повертати 'updatedUser')
+      // Якщо він його не повертає, ця функція не оновить XP.
+      // Але ми припустимо, що він поводиться так само, як toggleTaskCompletion.
+      const updatedUser = await api.updateTaskProgress(taskId, newProgress); // <-- ЗМІНЕНО
+      setUser(updatedUser); // <-- ДОДАНО
     } catch (error) {
       console.error("Failed to update task progress:", error);
       setTasks(originalTasks); // Revert
+      setUser(originalUser); // <-- ДОДАНО
     }
   };
 
+  // Знайдіть цю функцію (близько рядка 193)
   const toggleHabitCompletion = async (habitId: string, dayNumber: number) => {
+    // 1. Зберігаємо оригінальний стан для обох
     const originalHabits = habits;
+    const originalUser = user; // <-- ДОДАНО
+
+    // 2. Оптимістичне оновлення звичок
     const updatedHabits = habits.map((h) => {
       if (h.id === habitId) {
         const newHistory = { ...h.history };
@@ -200,10 +231,16 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
     setHabits(updatedHabits);
 
     try {
-      await api.toggleHabitCompletion(habitId, dayNumber);
+      // 3. Викликаємо API і отримуємо оновленого КОРИСТУВАЧА
+      const updatedUser = await api.toggleHabitCompletion(habitId, dayNumber); // <-- ЗМІНЕНО
+
+      // 4. Оновлюємо стан 'user' даними з сервера
+      setUser(updatedUser); // <-- ДОДАНО (Це виправить помилку)
     } catch (error) {
       console.error("Failed to toggle habit completion:", error);
-      setHabits(originalHabits); // Revert on error
+      // 5. Відкочуємо обидва стани
+      setHabits(originalHabits);
+      setUser(originalUser); // <-- ДОДАНО
     }
   };
 
@@ -284,6 +321,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const value: UserData = {
     isLoading,
     user,
+    token, // ✅ 7. ДОДАНО 'token' ДО ОБ'ЄКТА VALUE
     tasks,
     habits,
     groups,

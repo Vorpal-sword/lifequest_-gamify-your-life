@@ -1,276 +1,208 @@
 {
   "rules": [
     {
-      "id": "R001",
+      "id": "ADVICE_SITTING_LONG",
       "priority": 100,
-      "description": "Присвоїти статус 'Новачок' користувачу без досвіду",
-      "conditions": [
-        {"fact": "user_level", "operator": "==", "value": 0},
-        {"fact": "total_tasks_completed", "operator": "==", "value": 0}
-      ],
+      "description": "Аналіз: Користувач довго сидить. Порада: Запропонувати розминку.",
+      "conditions": [{ "fact": "sitting_hours", "operator": ">=", "value": 4 }],
       "actions": [
-        {"fact": "user_status", "value": "Новачок"},
-        {"fact": "available_quests", "value": ["Перше завдання", "Знайомство з системою"]}
+        { "fact": "health_recommendation", "value": "Ви довго сидите" },
+        { "fact": "suggested_quest", "value": "Коротка розминка (5 хв)" },
+        { "fact": "health_priority", "value": "high" }
       ]
     },
     {
-      "id": "R002",
+      "id": "ADVICE_HIGH_STRESS",
       "priority": 95,
-      "description": "Підвищити рівень користувача при досягненні 100 XP",
-      "conditions": [
-        {"fact": "user_xp", "operator": ">=", "value": 100},
-        {"fact": "user_level", "operator": "<", "value": 2}
-      ],
+      "description": "Аналіз: Високий рівень стресу. Порада: Запропонувати медитацію.",
+      "conditions": [{ "fact": "stress_level", "operator": ">=", "value": 7 }],
       "actions": [
-        {"fact": "user_level", "value": 2},
-        {"fact": "level_up_reward", "value": 50}
+        { "fact": "wellness_recommendation", "value": "Час розслабитись" },
+        { "fact": "suggested_quest", "value": "Медитація (5 хв)" },
+        { "fact": "wellness_priority", "value": "high" }
       ]
     },
     {
-      "id": "R003",
+      "id": "ADVICE_LATE_NIGHT_ACTIVITY",
       "priority": 90,
-      "description": "Присвоїти досягнення 'Перші кроки' після виконання 5 завдань",
-      "conditions": [
-        {"fact": "total_tasks_completed", "operator": ">=", "value": 5},
-        {"fact": "has_achievement_first_steps", "operator": "==", "value": false}
-      ],
+      "description": "Аналіз: Користувач активний пізно вночі. Порада: Запропонувати підготуватися до сну.",
+      "conditions": [{ "fact": "current_hour", "operator": ">=", "value": 23 }],
       "actions": [
-        {"fact": "has_achievement_first_steps", "value": true},
-        {"fact": "achievement_earned", "value": "Перші кроки"},
-        {"fact": "user_xp", "value": 25}
+        {
+          "fact": "notification",
+          "value": "Вже пізно. Можливо, час відпочити?"
+        },
+        { "fact": "suggested_quest", "value": "Вечірня рефлексія" }
       ]
     },
     {
-      "id": "R004",
+      "id": "ADVICE_STRESS_AND_NO_ACTIVITY",
       "priority": 85,
-      "description": "Запропонувати складніші квести досвідченому користувачу",
+      "description": "Аналіз: Стрес + відсутність активності. Порада: Легка прогулянка.",
       "conditions": [
-        {"fact": "user_level", "operator": ">=", "value": 2},
-        {"fact": "total_tasks_completed", "operator": ">=", "value": 10}
+        { "fact": "stress_level", "operator": ">=", "value": 5 },
+        { "fact": "sitting_hours", "operator": ">=", "value": 3 },
+        { "fact": "physical_activity_today", "operator": "==", "value": 0 }
       ],
       "actions": [
-        {"fact": "user_status", "value": "Досвідчений"},
-        {"fact": "available_quests", "value": ["Тижневий челендж", "Марафон продуктивності", "Майстер часу"]}
+        {
+          "fact": "health_recommendation",
+          "value": "Найкращий спосіб зняти стрес - рух"
+        },
+        { "fact": "suggested_quest", "value": "Прогулянка (15 хв)" },
+        { "fact": "health_priority", "value": "medium" }
       ]
     },
     {
-      "id": "R005",
+      "id": "ADVICE_LOW_STRESS_GOOD_JOB",
       "priority": 80,
-      "description": "Визначити продуктивний день при виконанні 3+ завдань",
-      "conditions": [
-        {"fact": "tasks_completed_today", "operator": ">=", "value": 3}
-      ],
+      "description": "Аналіз: Низький рівень стресу. Порада: Похвалити.",
+      "conditions": [{ "fact": "stress_level", "operator": "<=", "value": 3 }],
       "actions": [
-        {"fact": "today_productivity", "value": "Високий"},
-        {"fact": "daily_bonus", "value": 10}
+        { "fact": "wellness_recommendation", "value": "Чудовий настрій!" },
+        {
+          "fact": "notification",
+          "value": "Ви виглядаєте розслабленим. Чудова робота з керування стресом!"
+        }
       ]
     },
     {
-      "id": "R006",
+      "id": "ADVICE_VERY_PRODUCTIVE_DAY",
       "priority": 75,
-      "description": "Нагадування про перерву при тривалій роботі",
+      "description": "Аналіз: Дуже продуктивний день. Порада: Похвалити і нагадати про відпочинок.",
       "conditions": [
-        {"fact": "work_hours_today", "operator": ">", "value": 4},
-        {"fact": "last_break_hours_ago", "operator": ">", "value": 2}
+        { "fact": "tasks_completed_today", "operator": ">=", "value": 5 }
       ],
       "actions": [
-        {"fact": "reminder_type", "value": "Час для перерви!"},
-        {"fact": "suggested_activity", "value": "Зробіть 15-хвилинну перерву"}
+        {
+          "fact": "notification",
+          "value": "Ви сьогодні в ударі! 🚀 Не забудьте зробити перерву."
+        }
       ]
     },
     {
-      "id": "R007",
+      "id": "ADVICE_LOW_ENGAGEMENT_WEEK",
       "priority": 70,
-      "description": "Присвоїти бейдж 'Рання пташка' за ранні завдання",
+      "description": "Аналіз: Низька активність цього тижня. Порада: Запропонувати квест для повернення.",
       "conditions": [
-        {"fact": "tasks_completed_before_9am", "operator": ">=", "value": 3},
-        {"fact": "has_badge_early_bird", "operator": "==", "value": false}
+        { "fact": "tasks_completed_this_week", "operator": "==", "value": 0 },
+        { "fact": "account_age_days", "operator": ">", "value": 7 }
       ],
       "actions": [
-        {"fact": "has_badge_early_bird", "value": true},
-        {"fact": "badge_earned", "value": "Рання пташка"},
-        {"fact": "user_xp", "value": 15}
+        {
+          "fact": "notification",
+          "value": "Давно не бачились! Спробуйте цей квест, щоб повернути ритм."
+        },
+        {
+          "fact": "available_quests",
+          "value": ["Мотиваційний квест: Повернення"]
+        }
       ]
     },
     {
-      "id": "R008",
+      "id": "ADVICE_STREAK_ACTIVE",
       "priority": 65,
-      "description": "Активувати бонус за серію днів",
-      "conditions": [
-        {"fact": "streak_days", "operator": ">=", "value": 7}
-      ],
+      "description": "Аналіз: Користувач тримає серію. Порада: Підбадьорити.",
+      "conditions": [{ "fact": "streak_days", "operator": ">=", "value": 3 }],
       "actions": [
-        {"fact": "streak_bonus_active", "value": true},
-        {"fact": "xp_multiplier", "value": 1.5},
-        {"fact": "streak_milestone", "value": "Тижнева серія!"}
+        {
+          "fact": "notification",
+          "value": "Чудова серія у 3+ дні! Так тримати! 🔥"
+        }
       ]
     },
     {
-      "id": "R009",
+      "id": "ADVICE_MID_DAY_CHECK",
       "priority": 60,
-      "description": "Запропонувати командний квест для соціальних користувачів",
+      "description": "Аналіз: Зараз обідній час. Порада: Запропонувати спланувати решту дня.",
       "conditions": [
-        {"fact": "user_level", "operator": ">=", "value": 3},
-        {"fact": "friends_count", "operator": ">", "value": 0},
-        {"fact": "prefers_team_quests", "operator": "==", "value": true}
+        { "fact": "current_hour", "operator": ">=", "value": 12 },
+        { "fact": "current_hour", "operator": "<=", "value": 14 }
       ],
       "actions": [
-        {"fact": "available_quests", "value": ["Командний челендж", "Співпраця місяця"]},
-        {"fact": "quest_type", "value": "team"}
+        {
+          "fact": "notification",
+          "value": "Екватор дня! Як щодо 5-хвилинного планування другої половини дня?"
+        },
+        { "fact": "suggested_quest", "value": "5-хвилинне планування" }
+      ]
+    },
+
+    {
+      "id": "STATUS_NEWBIE",
+      "priority": 100,
+      "description": "Аналіз: Користувач - новачок. Порада: Запропонувати прості квести.",
+      "conditions": [
+        { "fact": "user_level", "operator": "==", "value": 1 },
+        { "fact": "total_tasks", "operator": "<", "value": 5 }
+      ],
+      "actions": [
+        { "fact": "user_status", "value": "Новачок" },
+        {
+          "fact": "available_quests",
+          "value": ["Виконати перше завдання", "Дослідити додаток"]
+        }
       ]
     },
     {
-      "id": "R010",
-      "priority": 55,
-      "description": "Рекомендувати фізичну активність при тривалій сидячій роботі",
-      "conditions": [
-        {"fact": "sitting_hours_today", "operator": ">", "value": 6},
-        {"fact": "physical_activity_today", "operator": "==", "value": 0}
-      ],
+      "id": "STATUS_INTERMEDIATE",
+      "priority": 90,
+      "description": "Аналіз: Користувач досяг 3 рівня. Порада: Запропонувати квести на звички.",
+      "conditions": [{ "fact": "user_level", "operator": ">=", "value": 3 }],
       "actions": [
-        {"fact": "health_recommendation", "value": "Рекомендована фізична активність"},
-        {"fact": "suggested_quest", "value": "20 хвилин ходьби"},
-        {"fact": "health_priority", "value": "high"}
+        { "fact": "user_status", "value": "Дослідник" },
+        {
+          "fact": "available_quests",
+          "value": ["Марафон продуктивності", "Створити першу звичку"]
+        }
       ]
     },
     {
-      "id": "R011",
+      "id": "STATUS_MASTER",
+      "priority": 80,
+      "description": "Аналіз: Користувач виконав 50 завдань. Порада: Відкрити персоналізацію.",
+      "conditions": [
+        { "fact": "total_tasks", "operator": ">=", "value": 50 },
+        { "fact": "user_status", "operator": "!=", "value": "Майстер" }
+      ],
+      "actions": [
+        { "fact": "user_status", "value": "Майстер" },
+        {
+          "fact": "notification",
+          "value": "Ви досягли майстерності! Тепер доступні персоналізовані квести."
+        }
+      ]
+    },
+
+    {
+      "id": "ADVICE_NO_FRIENDS",
       "priority": 50,
-      "description": "Відзначити майстерність при 50+ виконаних завданнях",
+      "description": "Аналіз: У користувача немає друзів. Порада: Запропонувати знайти їх.",
       "conditions": [
-        {"fact": "total_tasks_completed", "operator": ">=", "value": 50},
-        {"fact": "user_status", "operator": "!=", "value": "Майстер"}
+        { "fact": "friends_count", "operator": "==", "value": 0 },
+        { "fact": "user_level", "operator": ">=", "value": 2 }
       ],
       "actions": [
-        {"fact": "user_status", "value": "Майстер"},
-        {"fact": "status_reward", "value": 100},
-        {"fact": "unlock_feature", "value": "Персоналізовані квести"}
+        {
+          "fact": "notification",
+          "value": "Досягати цілей разом веселіше! Спробуйте додати друзів."
+        },
+        { "fact": "suggested_quest", "value": "Знайти першого друга" }
       ]
     },
     {
-      "id": "R012",
+      "id": "ADVICE_TEAM_QUEST",
       "priority": 45,
-      "description": "Визначити категорію завдання як пріоритетну",
+      "description": "Аналіз: Користувач має друзів. Порада: Запропонувати командний квест.",
       "conditions": [
-        {"fact": "task_category", "operator": "==", "value": "career"},
-        {"fact": "career_goal_active", "operator": "==", "value": true}
+        { "fact": "friends_count", "operator": ">", "value": 0 },
+        { "fact": "user_level", "operator": ">=", "value": 3 }
       ],
       "actions": [
-        {"fact": "task_priority", "value": "high"},
-        {"fact": "xp_reward_multiplier", "value": 2.0}
-      ]
-    },
-    {
-      "id": "R013",
-      "priority": 40,
-      "description": "Запропонувати медитацію при високому рівні стресу",
-      "conditions": [
-        {"fact": "stress_level", "operator": ">", "value": 7},
-        {"fact": "meditation_done_today", "operator": "==", "value": false}
-      ],
-      "actions": [
-        {"fact": "wellness_recommendation", "value": "Медитація"},
-        {"fact": "suggested_duration", "value": 10},
-        {"fact": "wellness_quest", "value": "Хвилина для себе"}
-      ]
-    },
-    {
-      "id": "R014",
-      "priority": 35,
-      "description": "Активувати вечірній режим для нічних сов",
-      "conditions": [
-        {"fact": "current_hour", "operator": ">=", "value": 22},
-        {"fact": "user_chronotype", "operator": "==", "value": "night_owl"}
-      ],
-      "actions": [
-        {"fact": "interface_mode", "value": "evening"},
-        {"fact": "productivity_bonus_active", "value": true},
-        {"fact": "optimal_work_time", "value": "night"}
-      ]
-    },
-    {
-      "id": "R015",
-      "priority": 30,
-      "description": "Запропонувати навчальні квести при низькій активності",
-      "conditions": [
-        {"fact": "tasks_completed_this_week", "operator": "<", "value": 5},
-        {"fact": "account_age_days", "operator": ">", "value": 7}
-      ],
-      "actions": [
-        {"fact": "engagement_status", "value": "low"},
-        {"fact": "suggested_content", "value": "Навчальні матеріали"},
-        {"fact": "available_quests", "value": ["Мотиваційний квест", "Поверни ритм"]}
-      ]
-    },
-    {
-      "id": "R016",
-      "priority": 25,
-      "description": "Досягнення за баланс робота-життя",
-      "conditions": [
-        {"fact": "work_life_balance_score", "operator": ">=", "value": 80},
-        {"fact": "has_achievement_balanced", "operator": "==", "value": false}
-      ],
-      "actions": [
-        {"fact": "has_achievement_balanced", "value": true},
-        {"fact": "achievement_earned", "value": "Гармонія життя"},
-        {"fact": "user_xp", "value": 50}
-      ]
-    },
-    {
-      "id": "R017",
-      "priority": 20,
-      "description": "Персоналізувати рекомендації на основі історії",
-      "conditions": [
-        {"fact": "total_tasks_completed", "operator": ">=", "value": 30},
-        {"fact": "favorite_category", "operator": "!=", "value": null}
-      ],
-      "actions": [
-        {"fact": "personalization_active", "value": true},
-        {"fact": "recommended_category", "value": "favorite_category"},
-        {"fact": "smart_suggestions_enabled", "value": true}
-      ]
-    },
-    {
-      "id": "R018",
-      "priority": 15,
-      "description": "Щотижневий звіт для активних користувачів",
-      "conditions": [
-        {"fact": "day_of_week", "operator": "==", "value": "Sunday"},
-        {"fact": "tasks_completed_this_week", "operator": ">", "value": 0}
-      ],
-      "actions": [
-        {"fact": "generate_weekly_report", "value": true},
-        {"fact": "report_type", "value": "weekly_summary"},
-        {"fact": "include_achievements", "value": true}
-      ]
-    },
-    {
-      "id": "R019",
-      "priority": 10,
-      "description": "Експертний статус при 200+ завданнях",
-      "conditions": [
-        {"fact": "total_tasks_completed", "operator": ">=", "value": 200},
-        {"fact": "user_level", "operator": ">=", "value": 10}
-      ],
-      "actions": [
-        {"fact": "user_status", "value": "Експерт"},
-        {"fact": "unlock_feature", "value": "Власні правила"},
-        {"fact": "mentor_mode_available", "value": true}
-      ]
-    },
-    {
-      "id": "R020",
-      "priority": 5,
-      "description": "Святкувати річницю використання додатку",
-      "conditions": [
-        {"fact": "account_age_days", "operator": ">=", "value": 365},
-        {"fact": "anniversary_celebrated", "operator": "==", "value": false}
-      ],
-      "actions": [
-        {"fact": "anniversary_celebrated", "value": true},
-        {"fact": "special_reward", "value": "Річна нагорода"},
-        {"fact": "user_xp", "value": 500},
-        {"fact": "unlock_feature", "value": "Ексклюзивні квести"}
+        {
+          "fact": "available_quests",
+          "value": ["Командний челендж", "Співпраця місяця"]
+        }
       ]
     }
   ]

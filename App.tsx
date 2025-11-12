@@ -10,7 +10,7 @@ import ProfilePage from "./components/ProfilePage.tsx";
 import LoginScreen from "./components/LoginScreen.tsx";
 
 const AppContent: React.FC = () => {
-  const data = useUserData();
+  const data = useUserData(); // 'data' містить .user, .tasks, .token, .login і т.д.
   const [activePage, setActivePage] = useState<Page>("Dashboard");
 
   const renderPage = useCallback(() => {
@@ -18,7 +18,8 @@ const AppContent: React.FC = () => {
 
     switch (activePage) {
       case "Dashboard":
-        return <Dashboard data={data} />;
+        // ✅ ВИПРАВЛЕНО: 'token' - це частина 'data'
+        return <Dashboard data={data} token={data.token} />;
       case "Tasks":
         return <TasksPage data={data} />;
       case "Social":
@@ -26,8 +27,10 @@ const AppContent: React.FC = () => {
       case "Profile":
         return <ProfilePage data={data} />;
       default:
-        return <Dashboard data={data} />;
+        // ✅ ВИПРАВЛЕНО: 'token' - це частина 'data'
+        return <Dashboard data={data} token={data.token} />;
     }
+    // 'data' вже є в залежностях, тому 'data.token' буде актуальним
   }, [activePage, data]);
 
   if (data.isLoading) {

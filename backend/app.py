@@ -68,6 +68,48 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
+# --- ✅ НОВА ФУНКЦІЯ: СИСТЕМА ПІДВИЩЕННЯ РІВНЯ ---
+def check_and_apply_level_up(user_id):
+    """
+    Перевіряє, чи користувач досяг нового рівня, і застосовує зміни.
+    Повертає ОНОВЛЕНИЙ документ користувача.
+    """
+    user = users_collection.find_one({'_id': ObjectId(user_id)})
+    
+    if user and user.get('xp', 0) >= user.get('xpToNextLevel', 100):
+        # Користувач підвищив рівень
+        current_level = user.get('level', 1)
+        current_xp = user.get('xp', 0)
+        xp_target = user.get('xpToNextLevel', 100)
+        
+        # Розрахунок
+        new_level = current_level + 1
+        xp_overflow = current_xp - xp_target
+        new_xp_target = int(xp_target * 1.5) # Наступна ціль на 50% складніша
+        level_up_bonus_currency = 50 # Бонус за рівень
+
+        # Оновлення в базі
+        users_collection.update_one(
+            {'_id': ObjectId(user_id)},
+            {
+                '$set': {
+                    'level': new_level,
+                    'xp': xp_overflow,
+                    'xpToNextLevel': new_xp_target
+                },
+                '$inc': {
+                    'currency': level_up_bonus_currency
+                }
+            }
+        )
+        print(f"--- LEVEL UP! --- User {user_id} reached level {new_level}")
+        # Повертаємо оновлені дані
+        return users_collection.find_one({'_id': ObjectId(user_id)})
+    
+    # Якщо рівня немає, повертаємо оригінальний (або поточний) документ
+    return user
+
+
 # --- МАРШРУТИ API ---
 
 # [POST] /api/auth/google - Автентифікація через Google
@@ -135,14 +177,18 @@ def google_auth():
 @token_required
 def restore_session(current_user):
     user_id = str(current_user['_id'])
-    user_data = serialize_doc(current_user)
+    
+    # ✅ ОНОВЛЕНО: Перевіряємо рівень при відновленні сесії, 
+    # на випадок якщо XP нарахувалося, а рівень не оновився
+    user_data = check_and_apply_level_up(user_id)
+    
     tasks_data = [serialize_doc(task) for task in tasks_collection.find({'userId': user_id})]
     habits_data = [serialize_doc(habit) for habit in habits_collection.find({'userId': user_id})]
     groups_data = [serialize_doc(group) for group in groups_collection.find({'members': user_id})]
     all_users_data = [serialize_doc(u) for u in users_collection.find({}, {'email': 0})]
     
     return jsonify({
-        'user': user_data,
+        'user': serialize_doc(user_data), # Повертаємо оновленого юзера
         'tasks': tasks_data,
         'habits': habits_data,
         'groups': groups_data,
@@ -206,44 +252,88 @@ def create_task(current_user):
 @app.route('/api/tasks/<task_id>/toggle', methods=['PUT'])
 @token_required
 def toggle_task(current_user, task_id):
-    task = tasks_collection.find_one({'_id': ObjectId(task_id)})
-    if not task:
-        return jsonify({'message': 'Task not found'}), 404
-    
-    # Дозволити будь-якому члену групи переключати груповий квест
-    is_group_quest = task.get('questOriginGroupId')
-    if is_group_quest:
-        group = groups_collection.find_one({'_id': ObjectId(task['questOriginGroupId'])})
-        if not group or str(current_user['_id']) not in group.get('members', []):
-            return jsonify({'message': 'Access denied to this group quest'}), 403
-    elif task.get('userId') != str(current_user['_id']):
-        return jsonify({'message': 'Access denied'}), 403
+    try:
+        task = tasks_collection.find_one({'_id': ObjectId(task_id)})
+        if not task:
+            return jsonify({'message': 'Task not found'}), 404
+        
+        is_group_quest = task.get('questOriginGroupId')
+        if is_group_quest:
+            group = groups_collection.find_one({'_id': ObjectId(task['questOriginGroupId'])})
+            if not group or str(current_user['_id']) not in group.get('members', []):
+                return jsonify({'message': 'Access denied to this group quest'}), 403
+        elif task.get('userId') != str(current_user['_id']):
+            return jsonify({'message': 'Access denied'}), 403
 
-    new_status = not task.get('completed', False)
-    tasks_collection.update_one({'_id': ObjectId(task_id)}, {'$set': {'completed': new_status}})
-    return jsonify({'message': 'Task status updated'}), 200
+        is_already_completed = task.get('completed', False)
+        new_status = not is_already_completed
+
+        xp_to_change = 0
+        currency_to_change = 0
+
+        if new_status:
+            xp_to_change = task.get('xp', 0)
+            currency_to_change = task.get('currencyReward', 0)
+        else:
+            xp_to_change = -task.get('xp', 0)
+            currency_to_change = -task.get('currencyReward', 0)
+
+        # 1. Оновлюємо статистику користувача
+        if xp_to_change != 0 or currency_to_change != 0:
+            users_collection.update_one(
+                {'_id': current_user['_id']},
+                {'$inc': {'xp': xp_to_change, 'currency': currency_to_change}}
+            )
+        
+        # 2. Оновлюємо статус завдання
+        tasks_collection.update_one(
+            {'_id': ObjectId(task_id)},
+            {'$set': {'completed': new_status}}
+        )
+        
+        # 3. ✅ ОНОВЛЕНО: Перевіряємо підвищення рівня
+        updated_user = check_and_apply_level_up(current_user['_id'])
+        
+        # 4. Повертаємо оновлені дані
+        return jsonify(serialize_doc(updated_user)), 200
+
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 # [PUT] /api/tasks/<task_id>/progress - Оновити прогрес для завдання-лічильника
 @app.route('/api/tasks/<task_id>/progress', methods=['PUT'])
 @token_required
 def update_task_progress_route(current_user, task_id):
-    data = request.get_json()
-    new_progress = data.get('progress')
+    try:
+        data = request.get_json()
+        new_progress = data.get('progress')
 
-    task = tasks_collection.find_one({'_id': ObjectId(task_id)})
-    if not task or not task.get('isCounter'):
-        return jsonify({'message': 'Counter task not found'}), 404
+        task = tasks_collection.find_one({'_id': ObjectId(task_id)})
+        if not task or not task.get('isCounter'):
+            return jsonify({'message': 'Counter task not found'}), 404
 
-    is_group_quest = task.get('questOriginGroupId')
-    if is_group_quest:
-        group = groups_collection.find_one({'_id': ObjectId(task['questOriginGroupId'])})
-        if not group or str(current_user['_id']) not in group.get('members', []):
-            return jsonify({'message': 'Access denied to this group quest'}), 403
-    elif task.get('userId') != str(current_user['_id']):
-        return jsonify({'message': 'Access denied'}), 403
+        is_group_quest = task.get('questOriginGroupId')
+        if is_group_quest:
+            group = groups_collection.find_one({'_id': ObjectId(task['questOriginGroupId'])})
+            if not group or str(current_user['_id']) not in group.get('members', []):
+                return jsonify({'message': 'Access denied to this group quest'}), 403
+        elif task.get('userId') != str(current_user['_id']):
+            return jsonify({'message': 'Access denied'}), 403
 
-    tasks_collection.update_one({'_id': ObjectId(task_id)}, {'$set': {'progress': new_progress}})
-    return jsonify({'message': 'Task progress updated'}), 200
+        tasks_collection.update_one({'_id': ObjectId(task_id)}, {'$set': {'progress': new_progress}})
+        
+        # (Примітка: Логіка нарахування XP за лічильники має бути тут)
+        # if new_progress >= task.get('target', float('inf')):
+        #   ... (нарахувати XP, викликати check_and_apply_level_up)
+        
+        # Поки що, просто повертаємо користувача. 
+        # Якщо логіка вище буде додана, XP оновиться завдяки 'check_and_apply_level_up'
+        updated_user = users_collection.find_one({'_id': current_user['_id']})
+        
+        return jsonify(serialize_doc(updated_user)), 200
+
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 # --- ЗВИЧКИ (HABITS) ---
 
@@ -272,20 +362,46 @@ def create_habit(current_user):
 @app.route('/api/habits/<habit_id>/toggle', methods=['PUT'])
 @token_required
 def toggle_habit_day(current_user, habit_id):
-    data = request.get_json()
-    day_number = str(data.get('dayNumber'))
-    
-    habit = habits_collection.find_one({'_id': ObjectId(habit_id), 'userId': str(current_user['_id'])})
-    if not habit:
-        return jsonify({'message': 'Habit not found or access denied'}), 404
+    try:
+        data = request.get_json()
+        day_number = str(data.get('dayNumber'))
+        
+        habit = habits_collection.find_one({'_id': ObjectId(habit_id), 'userId': str(current_user['_id'])})
+        if not habit:
+            return jsonify({'message': 'Habit not found or access denied'}), 404
 
-    current_status = habit.get('history', {}).get(day_number)
-    new_status = 'completed' if current_status != 'completed' else 'pending'
-    
-    update_query = {f'history.{day_number}': new_status}
-    habits_collection.update_one({'_id': ObjectId(habit_id)}, {'$set': update_query})
+        current_status = habit.get('history', {}).get(day_number)
+        new_status = 'completed' if current_status != 'completed' else 'pending'
+        
+        xp_to_change = 0
+        currency_to_change = 0
 
-    return jsonify({'message': 'Habit history updated'}), 200
+        if new_status == 'completed':
+            xp_to_change = habit.get('xpPerDay', 0)
+            currency_to_change = habit.get('currencyRewardPerDay', 0)
+        elif current_status == 'completed':
+            xp_to_change = -habit.get('xpPerDay', 0)
+            currency_to_change = -habit.get('currencyRewardPerDay', 0)
+
+        # 1. Оновлюємо статистику користувача
+        if xp_to_change != 0 or currency_to_change != 0:
+            users_collection.update_one(
+                {'_id': current_user['_id']},
+                {'$inc': {'xp': xp_to_change, 'currency': currency_to_change}}
+            )
+
+        # 2. Оновлюємо історію звички
+        update_query = {f'history.{day_number}': new_status}
+        habits_collection.update_one({'_id': ObjectId(habit_id)}, {'$set': update_query})
+
+        # 3. ✅ ОНОВЛЕНО: Перевіряємо підвищення рівня
+        updated_user = check_and_apply_level_up(current_user['_id'])
+        
+        # 4. Повертаємо оновлені дані
+        return jsonify(serialize_doc(updated_user)), 200
+        
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
 
 # --- СОЦІАЛЬНІ ФУНКЦІЇ (ДРУЗІ, ГРУПИ) ---
 
@@ -300,12 +416,10 @@ def add_friend_route(current_user):
     if str(current_user['_id']) == friend_id_to_add:
         return jsonify({'message': 'Cannot add yourself as a friend'}), 400
 
-    # Додати друга до списку поточного користувача
     users_collection.update_one(
         {'_id': current_user['_id']},
         {'$addToSet': {'friends': friend_id_to_add}}
     )
-    # Додати поточного користувача до списку нового друга (взаємна дружба)
     users_collection.update_one(
         {'_id': ObjectId(friend_id_to_add)},
         {'$addToSet': {'friends': str(current_user['_id'])}}
@@ -325,7 +439,7 @@ def create_group_route(current_user):
         'name': data.get('name'),
         'description': data.get('description', ''),
         'leaderId': user_id,
-        'members': list(set(data.get('members', []) + [user_id])), # Гарантувати, що лідер є членом
+        'members': list(set(data.get('members', []) + [user_id])),
         'activeQuest': data.get('activeQuest'),
         'activeQuestTarget': data.get('activeQuestTarget'),
         'activeQuestEstimate': data.get('activeQuestEstimate'),
@@ -335,16 +449,15 @@ def create_group_route(current_user):
     result = groups_collection.insert_one(new_group_data)
     created_group = groups_collection.find_one({'_id': result.inserted_id})
     
-    # Якщо група має активний квест, створити відповідне завдання
     created_task = None
     if created_group and created_group.get('activeQuest'):
         quest_task_data = {
-            'userId': user_id, # Можна призначити творцю
+            'userId': user_id, 
             'title': created_group['activeQuest'],
             'description': f"Group quest for '{created_group['name']}'",
             'type': 'quest',
-            'xp': 100, # Приклад значення, може бути динамічним
-            'currencyReward': 50, # Приклад значення
+            'xp': 100, 
+            'currencyReward': 50, 
             'completed': False,
             'estimate': created_group.get('activeQuestEstimate'),
             'isCounter': True,
@@ -374,7 +487,6 @@ def update_group_route(current_user, group_id):
     if 'name' in data: update_fields['name'] = data['name']
     if 'description' in data: update_fields['description'] = data['description']
     if 'members' in data: update_fields['members'] = data['members']
-    # Можливо, знадобиться складніша логіка для оновлення квестів, наприклад, створення нового завдання
     if 'activeQuest' in data: update_fields['activeQuest'] = data['activeQuest']
     if 'activeQuestTarget' in data: update_fields['activeQuestTarget'] = data['activeQuestTarget']
     
@@ -390,7 +502,6 @@ def update_group_route(current_user, group_id):
 def leave_group_route(current_user, group_id):
     user_id = str(current_user['_id'])
     
-    # Видалити користувача зі списку членів групи
     result = groups_collection.update_one(
         {'_id': ObjectId(group_id)},
         {'$pull': {'members': user_id}}
@@ -400,53 +511,15 @@ def leave_group_route(current_user, group_id):
         return jsonify({'message': 'Group not found'}), 404
         
     group = groups_collection.find_one({'_id': ObjectId(group_id)})
-    # Якщо група стала порожньою або лідер вийшов, видалити її
     if not group.get('members') or group.get('leaderId') == user_id:
         groups_collection.delete_one({'_id': ObjectId(group_id)})
-        # Також видалити пов'язане завдання-квест
         tasks_collection.delete_many({'questOriginGroupId': group_id})
         return jsonify({'message': 'Successfully left and deleted empty group'}), 200
 
     return jsonify({'message': 'Successfully left group'}), 200
 
-# --- МАРШРУТИ ІНТЕГРАЦІЇ AI ---
-
-@app.route('/api/ai/analyze', methods=['POST'])
-def ai_analyze():
-    """
-    AI аналіз користувача
-    """
-    try:
-        # Отримуємо дані з запиту
-        user_data = request.get_json()
-        
-        if not user_data:
-            return jsonify({
-                'success': False,
-                'error': 'No data provided'
-            }), 400
-        
-        # Отримуємо AI сервіс
-        ai_service = get_ai_service()
-        
-        # Аналізуємо користувача
-        recommendations = ai_service.analyze_user(user_data)
-        
-        return jsonify({
-            'success': True,
-            'data': recommendations
-        }), 200
-        
-    except Exception as e:
-        print(f"Error in AI analysis: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
+# --- МАРШРУТИ ІНТЕГРАЦІЇ AI (БЕЗПЕЧНА ВЕРСІЯ) ---
+# (Видалено дублікат /api/ai/analyze)
 
 @app.route('/api/ai/health', methods=['GET'])
 def ai_health():
@@ -465,35 +538,51 @@ def ai_health():
         }), 500
 
 
-@app.route('/api/ai/test', methods=['GET'])
-def ai_test():
-    """Тестовий endpoint для перевірки AI"""
+@app.route('/api/ai/analyze', methods=['POST'])
+@token_required
+def ai_analyze_secure(current_user):
+    """
+    AI аналіз поточного користувача (безпечна версія)
+    """
     try:
-        ai_service = get_ai_service()
+        client_data = request.get_json() or {}
         
-        # Тестові дані
-        test_user = {
-            'level': 0,
-            'xp': 0,
-            'total_tasks': 0,
-            'tasks_today': 0,
-            'streak_days': 0
+        # ✅ ОНОВЛЕНО: Перевіряємо рівень ДО того, як віддати дані в AI
+        current_user = check_and_apply_level_up(current_user['_id'])
+        user_id = str(current_user['_id'])
+        
+        total_tasks = tasks_collection.count_documents({'userId': user_id})
+        tasks_today = tasks_collection.count_documents({
+            'userId': user_id, 
+            'type': 'daily', 
+            'completed': True 
+        })
+
+        user_data_for_ai = {
+            "user_id": user_id,
+            "level": current_user.get('level'),
+            "xp": current_user.get('xp'),
+            "total_tasks": total_tasks,
+            "tasks_today": tasks_today, 
+            "streak_days": current_user.get('streaks', {}).get('dailyTasks', 0),
+            "stress_level": client_data.get('stress_level'),
+            "sitting_hours": client_data.get('sitting_hours')
         }
         
-        result = ai_service.analyze_user(test_user)
+        ai_service = get_ai_service()
+        recommendations = ai_service.analyze_user(user_data_for_ai)
         
         return jsonify({
             'success': True,
-            'test_data': test_user,
-            'result': result
+            'data': recommendations
         }), 200
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
+        print(f"Error in AI analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
 
 # --- ЗАПУСК СЕРВЕРА ---
 if __name__ == '__main__':

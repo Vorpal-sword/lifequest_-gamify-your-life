@@ -314,7 +314,7 @@ def get_ai_service(rule_engine=None, kb=None):
             kb_new, engine_new = create_rule_based_system()
             
             # Завантажуємо правила
-            rules_file = Path(__file__).parent / 'lifequest_rules.json'
+            rules_file = Path(__file__).parent / 'data' / 'lifequest_rules.json'
             with open(rules_file, 'r', encoding='utf-8') as f:
                 rules = RuleParser.parse_json_rules(json.load(f))
                 kb_new.add_rules(rules)

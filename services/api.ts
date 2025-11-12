@@ -61,9 +61,7 @@ async function apiClient<T>(
 
 // --- USER AUTHENTICATION & DATA ---
 // The backend will handle the logic of finding or creating a user.
-export async function authenticateWithGoogle(
-  googleToken: string
-): Promise<{
+export async function authenticateWithGoogle(googleToken: string): Promise<{
   token: string;
   user: AppUser;
   tasks: Task[];
@@ -92,40 +90,59 @@ export async function restoreSession(): Promise<{
 
 // --- DATA OPERATIONS (REAL IMPLEMENTATIONS) ---
 
-export const toggleTaskCompletion = (taskId: string): Promise<void> =>
-  apiClient(`/tasks/${taskId}/toggle`, { method: "PUT" });
+// ✅ ЗМІНЕНО: Promise<void> -> Promise<AppUser>
+export const toggleTaskCompletion = (taskId: string): Promise<AppUser> =>
+  apiClient<AppUser>(`/tasks/${taskId}/toggle`, { method: "PUT" });
+
+// ✅ ЗМІНЕНО: Promise<void> -> Promise<AppUser>
 export const updateTaskProgress = (
   taskId: string,
   newProgress: number
-): Promise<void> =>
-  apiClient(`/tasks/${taskId}/progress`, {
+): Promise<AppUser> =>
+  apiClient<AppUser>(`/tasks/${taskId}/progress`, {
     method: "PUT",
     body: JSON.stringify({ progress: newProgress }),
   });
+
 export const addTask = (task: Omit<Task, "id" | "completed">): Promise<Task> =>
   apiClient("/tasks", { method: "POST", body: JSON.stringify(task) });
+
 export const addHabit = (
   habitData: Omit<Habit, "id" | "history" | "startDate">
 ): Promise<Habit> =>
   apiClient("/habits", { method: "POST", body: JSON.stringify(habitData) });
+
+// ✅ ЗМІНЕНО: Promise<void> -> Promise<AppUser>
 export const toggleHabitCompletion = (
   habitId: string,
   dayNumber: number
-): Promise<void> =>
-  apiClient(`/habits/${habitId}/toggle`, {
+): Promise<AppUser> =>
+  apiClient<AppUser>(`/habits/${habitId}/toggle`, {
     method: "PUT",
     body: JSON.stringify({ dayNumber }),
   });
+
+// ✅ ЗМІНЕНО: Додано <AppUser> для явності
 export const updateUser = (
   userData: Partial<Pick<AppUser, "name" | "avatarUrl" | "savedAvatars">>
 ): Promise<AppUser> =>
-  apiClient("/user", { method: "PATCH", body: JSON.stringify(userData) });
+  apiClient<AppUser>("/user", {
+    method: "PATCH",
+    body: JSON.stringify(userData),
+  });
+
+// ✅ ЗМІНЕНО: Додано <AppUser> для явності
 export const addFriend = (friendId: string): Promise<AppUser> =>
-  apiClient("/friends", { method: "POST", body: JSON.stringify({ friendId }) });
+  apiClient<AppUser>("/friends", {
+    method: "POST",
+    body: JSON.stringify({ friendId }),
+  });
+
 export const createGroup = (
   groupData: Omit<Group, "id" | "leaderId">
 ): Promise<{ group: Group; task: Task | null }> =>
   apiClient("/groups", { method: "POST", body: JSON.stringify(groupData) });
+
 export const updateGroup = (
   groupId: string,
   newGroupData: Partial<Group>
@@ -134,5 +151,6 @@ export const updateGroup = (
     method: "PATCH",
     body: JSON.stringify(newGroupData),
   });
+
 export const leaveGroup = (groupId: string): Promise<void> =>
   apiClient(`/groups/${groupId}/leave`, { method: "POST" });
