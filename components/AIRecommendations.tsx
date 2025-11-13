@@ -1,89 +1,75 @@
 /**
  * AIRecommendations.tsx
- * * ОНОВЛЕНО: Додано логіку для "м'яких порад".
- * Текст повідомлень тепер змінюється залежно від 'confidence' (впевненості).
+ * * ФІНАЛЬНА ВЕРСІЯ (Лаб 2 + Лаб 3)
+ * - Виправлено: Блоки (Health, Quests, Notifications) приховуються, якщо їх вміст порожній.
+ * - Очікує вкладену відповідь: data.rules та data.ml.
  */
 
 import React, { useEffect, useState } from "react";
-import "./AIRecommendations.css"; // Переконайтеся, що цей CSS файл існує
+import "./AIRecommendations.css";
 
-// --- Типи (залишаємо як є) ---
-interface Achievement {
-  id: string;
-  name: string;
-  xp_reward?: number;
-  type?: string;
-  icon: string;
-  timestamp: string;
-}
-
+// --- Типи ---
 interface Quest {
   id: string;
   name: string;
-  difficulty: "easy" | "medium" | "hard";
+  difficulty: string;
   xp_reward: number;
   category: string;
   suggested?: boolean;
-  confidence?: number; // Додано для Лаб. 2
+  confidence?: number;
 }
-
 interface HealthTip {
   id: string;
   type: string;
   message: string;
   quest?: string;
-  priority: "low" | "medium" | "high";
+  priority: string;
   icon: string;
-  confidence?: number; // Додано для Лаб. 2
+  confidence?: number;
 }
-
 interface Notification {
   id: string;
   type: string;
   title: string;
   message: string;
-  priority: "low" | "medium" | "high";
+  priority: string;
   icon: string;
-  confidence?: number; // Додано для Лаб. 2
+  confidence?: number;
 }
-
-interface AIRecommendationsData {
+interface RuleEngineData {
   status: string | null;
   quests: Quest[];
   health_tips: HealthTip[];
   notifications: Notification[];
-  level_info?: {};
-  achievements?: Achievement[];
-  rewards?: {};
   analytics: {
     rules_fired: number;
-    new_facts: number;
+    fuzzy_results: any;
   };
 }
-
+interface MLModelData {
+  predicted_productivity_score?: number | null;
+  predicted_productivity_text?: string;
+}
+interface CombinedData {
+  rules: RuleEngineData;
+  ml: MLModelData;
+}
 interface SurveyData {
   stress_level?: number;
   sitting_hours?: number;
   physical_activity_today?: number;
 }
-
 interface AIRecommendationsProps {
   authToken: string;
   surveyData?: SurveyData;
-  autoRefresh?: boolean;
-  refreshInterval?: number;
 }
 
 // =============== КОМПОНЕНТ ===============
-
 const AIRecommendations: React.FC<AIRecommendationsProps> = ({
   authToken,
   surveyData = {},
-  autoRefresh = false,
-  refreshInterval = 60000,
 }) => {
-  const [recommendations, setRecommendations] =
-    useState<AIRecommendationsData | null>(null);
+  const [data, setData] = useState<CombinedData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,7 +80,6 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
 
     try {
       const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8080";
-
       const response = await fetch(`${API_URL}/api/ai/analyze`, {
         method: "POST",
         headers: {
@@ -110,14 +95,11 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
           errorData?.message || `HTTP error! status: ${response.status}`
         );
       }
-
       const result = await response.json();
-
       if (!result.success) {
         throw new Error(result.error || "Failed to get recommendations");
       }
-
-      setRecommendations(result.data);
+      setData(result.data);
     } catch (err) {
       console.error("Error fetching AI recommendations:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -133,37 +115,17 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
       return;
     }
     fetchRecommendations();
+  }, [authToken]);
 
-    if (autoRefresh) {
-      const interval = setInterval(fetchRecommendations, refreshInterval);
-      return () => clearInterval(interval);
-    }
-  }, [authToken, autoRefresh, refreshInterval]);
-
-  // =============== ЛОГІКА "М'ЯКИХ ПОРАД" ===============
-
-  /**
-   * Повертає "пом'якшувальну" фразу залежно від рівня впевненості.
-   * @param confidence - Коефіцієнт упевненості (0.0 - 1.0)
-   */
   const getConfidencePrefix = (confidence: number): string => {
-    // 1.0 - 0.9 (Дуже висока впевненість)
-    if (confidence >= 0.9) {
-      return "❗️ Важливо: ";
-    }
-    // 0.89 - 0.7 (Висока впевненість)
-    if (confidence >= 0.7) {
-      return "💡 Схоже, що ";
-    }
-    // 0.69 - 0.5 (Середня впевненість) - М'ЯКА ПОРАДА
-    if (confidence >= 0.5) {
-      return "🤔 Можливо, ";
-    }
-    // < 0.5 (Низька впевненість)
-    return "▫️ Є невелика ймовірність, що ";
+    if (confidence >= 0.9) return "❗️ Важливо: ";
+    if (confidence >= 0.7) return "💡 Схоже, що ";
+    if (confidence >= 0.5) return "🤔 Можливо, ";
+    return "▫️ ";
   };
 
-  // =============== LOADING STATE ===============
+  // --- Рендер ---
+
   if (loading) {
     return (
       <div className="ai-recommendations">
@@ -175,33 +137,83 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
     );
   }
 
-  // =============== ERROR STATE ===============
   if (error) {
     return (
       <div className="ai-recommendations">
         <div className="ai-error">
           <span className="error-icon">⚠️</span>
           <p>Помилка: {error}</p>
-          {authToken && (
-            <button onClick={fetchRecommendations} className="retry-button">
-              Спробувати знову
-            </button>
-          )}
+          <button onClick={fetchRecommendations} className="retry-button">
+            Спробувати знову
+          </button>
         </div>
       </div>
     );
   }
 
-  // =============== NO DATA STATE ===============
-  if (!recommendations) {
-    return null;
+  if (!data || !data.rules) {
+    return (
+      <div className="ai-recommendations">
+        <div className="ai-loading">
+          <p>Натисніть "Оновити", щоб отримати AI-поради.</p>
+          <div
+            className="ai-footer"
+            style={{ borderTop: 0, marginTop: "20px" }}
+          >
+            <button
+              onClick={fetchRecommendations}
+              className="refresh-button"
+              disabled={loading}
+            >
+              {loading ? "Оновлення..." : "🔄 Оновити рекомендації"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // =============== MAIN RENDER ===============
+  // Дістаємо дані
+  const recommendations = data.rules;
+  const mlPrediction = data.ml;
+
+  // Захищені масиви
+  const healthTips = recommendations.health_tips || [];
+  const notifications = recommendations.notifications || [];
+  const quests = recommendations.quests || [];
+
+  // Перевірка на випадок, якщо немає жодних даних
+  if (
+    healthTips.length === 0 &&
+    notifications.length === 0 &&
+    quests.length === 0 &&
+    mlPrediction?.predicted_productivity_score == null
+  ) {
+    return (
+      <div className="ai-recommendations">
+        <div className="ai-loading">
+          <p>
+            👍 AI не знайшов нічого, про що варто було б хвилюватися. Так
+            тримати!
+          </p>
+        </div>
+        <div className="ai-footer" style={{ borderTop: 0, marginTop: "20px" }}>
+          <button
+            onClick={fetchRecommendations}
+            className="refresh-button"
+            disabled={loading}
+          >
+            {loading ? "Оновлення..." : "🔄 Оновити рекомендації"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ai-recommendations">
       <div className="ai-header">
-        <h2 className="ai-title">🤖 AI Рекомендації</h2>
+        <h2 className="ai-title">🤖 AI Асистент</h2>
         {recommendations.status && (
           <div className="user-status-badge">
             <span className="status-label">Статус:</span>
@@ -210,87 +222,40 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
         )}
       </div>
 
-      {/* ✅ ОНОВЛЕНО: Блок "notifications" тепер використовує getConfidencePrefix */}
-      {recommendations.notifications &&
-        recommendations.notifications.length > 0 && (
-          <div className="ai-section notifications-section">
-            <h3 className="section-title">🔔 Нагадування</h3>
-            <div className="notifications-list">
-              {recommendations.notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`notification-card priority-${notification.priority}`}
-                >
-                  <span className="notif-icon">{notification.icon}</span>
-                  <div className="notif-content">
-                    <h4 className="notif-title">{notification.title}</h4>
-                    <p className="notif-message">
-                      <strong>
-                        {getConfidencePrefix(notification.confidence || 1.0)}
-                      </strong>
-                      {notification.message}
-                    </p>
-                  </div>
-                </div>
-              ))}
+      {/* --- Блок Лаб 3 (ML) --- */}
+      {mlPrediction && mlPrediction.predicted_productivity_score != null && (
+        <div className="ai-section ml-prediction-section">
+          <h3 className="section-title">🔮 ML Прогноз продуктивності</h3>
+          <div className="ml-content">
+            <div className="ml-score">
+              {mlPrediction.predicted_productivity_score}%
+            </div>
+            <div className="ml-text">
+              Прогнозована продуктивність:{" "}
+              <strong>{mlPrediction.predicted_productivity_text}</strong>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-      {/* ✅ ОНОВЛЕНО: Блок "health_tips" тепер використовує getConfidencePrefix */}
-      {recommendations.health_tips &&
-        recommendations.health_tips.length > 0 && (
-          <div className="ai-section health-section">
-            <h3 className="section-title">💪 Подбайте про здоров'я</h3>
-            <div className="health-tips-list">
-              {recommendations.health_tips.map((tip) => (
-                <div
-                  key={tip.id}
-                  className={`health-tip-card priority-${tip.priority}`}
-                >
-                  <span className="tip-icon">{tip.icon}</span>
-                  <div className="tip-content">
-                    <h4 className="tip-type">
-                      {getConfidencePrefix(tip.confidence || 1.0)}
-                      {tip.type}
-                    </h4>
-                    <p className="tip-message">{tip.message}</p>
-                    {tip.quest && (
-                      <p className="tip-quest">📝 Квест: {tip.quest}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+      {/* --- Блоки Лаб 2 (Fuzzy Logic) --- */}
 
-      {/* Блок "quests" (без змін) */}
-      {recommendations.quests && recommendations.quests.length > 0 && (
-        <div className="ai-section quests-section">
-          <h3 className="section-title">🎯 Рекомендовані квести</h3>
-          <div className="quests-list">
-            {recommendations.quests.map((quest) => (
-              <div
-                key={quest.id}
-                className={`quest-card difficulty-${quest.difficulty} ${
-                  quest.suggested ? "suggested" : ""
-                }`}
-              >
-                <div className="quest-header">
-                  <h4 className="quest-name">{quest.name}</h4>
-                  {quest.suggested && (
-                    <span className="suggested-badge">Рекомендовано</span>
-                  )}
-                </div>
-                <div className="quest-details">
-                  <span className={`difficulty-badge ${quest.difficulty}`}>
-                    {quest.difficulty === "easy" && "⭐ Легко"}
-                    {quest.difficulty === "medium" && "⭐⭐ Середньо"}
-                    {quest.difficulty === "hard" && "⭐⭐⭐ Складно"}
-                  </span>
-                  <span className="quest-reward">+{quest.xp_reward} XP</span>
-                  <span className="quest-category">{quest.category}</span>
+      {/* 1. Повідомлення (Статус/Прогрес) */}
+      {notifications.length > 0 && (
+        <div className="ai-section notifications-section">
+          <h3 className="section-title">🔔 Нагадування (Прогрес)</h3>
+          <div className="notifications-list">
+            {notifications.map((notification) => (
+              <div key={notification.id} className="notification-card">
+                <span className="notif-icon">{notification.icon}</span>
+                <div className="notif-content">
+                  <h4 className="notif-title">{notification.title}</h4>
+                  <p className="notif-message">
+                    <strong>
+                      {getConfidencePrefix(notification.confidence || 1.0)}
+                    </strong>
+                    {notification.message}
+                  </p>
                 </div>
               </div>
             ))}
@@ -298,7 +263,72 @@ const AIRecommendations: React.FC<AIRecommendationsProps> = ({
         </div>
       )}
 
-      {/* Футер (без змін) */}
+      {/* 2. Поради (Здоров'я/Wellness) */}
+      {healthTips.length > 0 && (
+        <div className="ai-section health-section">
+          <h3 className="section-title">💪 Поради (Fuzzy)</h3>
+          <div className="health-tips-list">
+            {healthTips.map((tip) => (
+              <div key={tip.id} className="health-tip-card">
+                <span className="tip-icon">{tip.icon}</span>
+                <div className="tip-content">
+                  <h4 className="tip-type">
+                    {getConfidencePrefix(tip.confidence || 1.0)}
+                    {tip.type}
+                  </h4>
+                  <p className="tip-message">{tip.message}</p>
+                  {tip.quest && (
+                    <p className="tip-quest">📝 Квест: {tip.quest}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Квести */}
+      {/* ✅ ВИПРАВЛЕНО: Блок рендериться лише якщо quests.length > 0 */}
+      {quests.length > 0 && (
+        <div className="ai-section quests-section">
+          <h3 className="section-title">🎯 Рекомендовані квести</h3>
+          <div className="quests-list">
+            {quests.map((quest) => (
+              <div
+                key={quest.id || quest.name}
+                className={`quest-card difficulty-${quest.difficulty} ${
+                  quest.suggested ? "suggested" : ""
+                }`}
+              >
+                <div className="quest-header">
+                  {/* Назва квесту */}
+                  <h4 className="quest-name">{quest.name}</h4>
+                  {quest.suggested && (
+                    <span className="suggested-badge">Рекомендовано</span>
+                  )}
+                </div>
+
+                {/* ПОВНИЙ БЛОК З ДЕТАЛЯМИ (Difficulty, XP, Category) */}
+                <div className="quest-details">
+                  <span className={`difficulty-badge ${quest.difficulty}`}>
+                    {quest.difficulty === "easy" && "⭐ Легко"}
+                    {quest.difficulty === "medium" && "⭐⭐ Середньо"}
+                    {quest.difficulty === "hard" && "⭐⭐⭐ Складно"}
+                  </span>
+                  {quest.xp_reward && (
+                    <span className="quest-reward">+{quest.xp_reward} XP</span>
+                  )}
+                  {quest.category && (
+                    <span className="quest-category">{quest.category}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Футер */}
       <div className="ai-footer">
         <button
           onClick={fetchRecommendations}

@@ -1,267 +1,189 @@
 """
 AI Quest Service для LifeQuest
-* ОНОВЛЕНО ДЛЯ ЛАБОРАТОРНОЇ 2 *
-- Інтегрується з rule_engine.py, що підтримує Коефіцієнти Упевненості (CF)
-- Конвертує вхідні дані в факти з CF
-- Форматує висновки (поради, квести, статуси) для фронтенду
+* ФІНАЛЬНА ВЕРСІЯ: ВИПРАВЛЕНО CRITICAL Key Error: 'message' -> 'text'.
 """
 import json
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime
 
+# ФІКС: Правильні імпорти для Fuzzy Logic
+from rule_engine import FuzzyKnowledgeBase, FuzzyInferenceEngine 
 
 class AIQuestService:
-    """Сервіс для AI рекомендацій в LifeQuest"""
     
-    def __init__(self, rule_engine, kb):
-        """
-        Args:
-            rule_engine: інстанс вашого існуючого rule_engine
-            kb: інстанс вашої knowledge base
-        """
+    def __init__(self, rule_engine: FuzzyInferenceEngine, kb: FuzzyKnowledgeBase):
         self.engine = rule_engine
         self.kb = kb
     
-    def analyze_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    def analyze_user(self, user_data: Dict[str, Any], ml_results: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Аналізує користувача та повертає рекомендації
+        Аналізує користувача, використовуючи нечітку логіку (Fuzzy Logic).
         """
-        # 1. Очищаємо попередній стан
-        self.kb.clear_facts()
-        self.kb.reset_rule_counters()
         
-        # 2. Конвертуємо дані користувача у факти (вже з CF)
-        facts = self._convert_user_data_to_facts(user_data)
+        # 1. Готуємо ЧІТКІ вхідні дані для Fuzzy Engine
+        inputs = {
+            "stress": user_data.get('stress_level', 5),
+            "sitting": user_data.get('sitting_hours', 0),
+            "productivity": min(user_data.get('tasks_completed_today', 0) * 2, 10), 
+            "level": user_data.get('level', 1),
+            "time_of_day": user_data.get('current_hour', datetime.now().hour),
+            "ml_prediction": ml_results.get('predicted_productivity_score', 50) 
+        }
         
-        # 3. Додаємо факти в базу знань
-        for fact in facts:
-            self.kb.add_fact(fact)
+        # 2. Виконуємо логічне виведення
+        fuzzy_results = self.engine.evaluate(inputs)
         
-        # 4. Виконуємо логічне виведення (з CF)
-        result = self.engine.forward_chain()
-        
-        # 5. Форматуємо результат для фронтенду
-        recommendations = self._format_recommendations(result)
+        # 3. Форматуємо результат для фронтенду
+        recommendations = self._format_recommendations(user_data, fuzzy_results)
         
         return recommendations
     
-    def _convert_user_data_to_facts(self, user_data: Dict) -> List:
-        """
-        Конвертує дані користувача у факти для rule engine.
-        * Оновлено для Лаб. 2: додає Коефіцієнти Упевненості (CF) *
-        """
-        from rule_engine import Fact
-        
-        facts = []
-        
-        # --- Об'єктивні факти (CF = 1.0) ---
-        facts.append(Fact('user_level', user_data.get('level', 1), confidence=1.0))
-        facts.append(Fact('user_xp', user_data.get('xp', 0), confidence=1.0))
-        facts.append(Fact('total_tasks', user_data.get('total_tasks', 0), confidence=1.0))
-        facts.append(Fact('tasks_completed_today', user_data.get('tasks_completed_today', 0), confidence=1.0))
-        facts.append(Fact('tasks_completed_this_week', user_data.get('tasks_completed_this_week', 0), confidence=1.0))
-        facts.append(Fact('streak_days', user_data.get('streak_days', 0), confidence=1.0))
-        facts.append(Fact('friends_count', user_data.get('friends_count', 0), confidence=1.0))
-        facts.append(Fact('account_age_days', user_data.get('account_age_days', 1), confidence=1.0))
-
-        # --- Суб'єктивні факти (CF < 1.0) ---
-        # (Припускаємо, що дані від користувача не є 100% точними)
-        facts.append(Fact('stress_level', user_data.get('stress_level'), confidence=0.9)) # Ми на 90% впевнені
-        facts.append(Fact('sitting_hours', user_data.get('sitting_hours'), confidence=0.8)) # На 80% впевнені
-        facts.append(Fact('physical_activity_today', user_data.get('physical_activity_today', 0), confidence=0.8))
-
-        # --- Контекстні факти (CF = 1.0) ---
-        facts.append(Fact('current_hour', datetime.now().hour, confidence=1.0))
-        
-        return facts
     
-    # В файлі ai_quest_service.py
-
-    def _format_recommendations(self, inference_result: Dict) -> Dict[str, Any]:
+    def _format_recommendations(self, user_data: Dict, fuzzy_results: List[Dict]) -> Dict[str, Any]:
         """
-        Форматує результати виведення для фронтенду.
-        * ОНОВЛЕНО: Фільтрує поради, залишаючи тільки НАЙВАЖЛИВІШІ (Top-1). *
+        Форматує результати нечіткого виведення для фронтенду.
+        * Застосовує "Winner Takes All" (Топ-1) для UI. *
         """
+        
         recommendations = {
-            'status': None,
+            'status': f"Рівень {user_data.get('level', 1)}",
             'quests': [],
             'health_tips': [],
             'notifications': [],
             'analytics': {
-                'rules_fired': len(inference_result.get('rules_fired', [])),
-                'new_facts': inference_result.get('new_facts_count', 0),
-                'final_facts': inference_result.get('final_facts', {})
+                'rules_fired': 0,
+                'fuzzy_results_for_teacher': fuzzy_results # Звіт для викладача
             }
         }
         
-        def get_fact_data(name):
-            if self.kb.has_fact(name):
-                fact = self.kb.get_fact(name)
-                return fact.value, fact.confidence
-            return None, 0.0
+        if not fuzzy_results: return recommendations
 
-        # --- 1. Статус користувача ---
-        status, status_conf = get_fact_data('user_status')
-        if status:
-            recommendations['status'] = f"{status} (Впевненість: {status_conf*100:.0f}%)"
-
-        # --- 2. Рекомендовані квести ---
-        quests_val, quest_conf = get_fact_data('available_quests')
-        if isinstance(quests_val, list):
-            for i, quest_name in enumerate(quests_val):
-                if not any(q['name'] == quest_name for q in recommendations['quests']):
-                    recommendations['quests'].append({
-                        'id': f'quest_avail_{i}',
-                        'name': quest_name,
-                        'difficulty': self._determine_quest_difficulty(quest_name),
-                        'xp_reward': self._calculate_quest_xp(quest_name),
-                        'category': self._determine_quest_category(quest_name),
-                        'confidence': quest_conf
-                    })
+        top_result = fuzzy_results[0]
+        all_advice = top_result.get('all_advice', [])
         
-        suggested_quests_list, sg_conf = get_fact_data('suggested_quest')
-        if isinstance(suggested_quests_list, list):
-            # ✅ СОРТУВАННЯ КВЕСТІВ: Можемо показати топ-2 квести
-            # (тут логіка простіша, бо квестів може бути декілька)
-            for i, quest_name in enumerate(suggested_quests_list):
-                 if not any(q['name'] == quest_name for q in recommendations['quests']):
-                    recommendations['quests'].append({
-                        'id': f'quest_suggested_{i}',
-                        'name': quest_name,
-                        'difficulty': 'easy', 
-                        'xp_reward': 10, 
-                        'category': 'health',
-                        'suggested': True, 
-                        'confidence': sg_conf
-                    })
+        recommendations['analytics']['rules_fired'] = len(all_advice)
 
-        # --- 3. ПОРАДИ (ЛОГІКА "WINNER TAKES ALL") ---
+        if not all_advice: return recommendations
+
+        # Конвертуємо "Пріоритет Поради" у візуальне представлення
+        priority_score = top_result.get('crisp_score', 0)
+        priority_level = "low"
+        if priority_score >= 70: priority_level = "high"
+        elif priority_score >= 40: priority_level = "medium"
+
+        # --- Тимчасові списки для сегментації ---
+        health_and_wellness_tips = []
+        status_and_progress_notifications = []
         
-        all_potential_tips = []
-
-        # Збираємо поради про здоров'я
-        health_tips_list, ht_conf = get_fact_data('health_tips')
-        if isinstance(health_tips_list, list):
-            for msg in health_tips_list:
-                all_potential_tips.append({
-                    'type': "Порада про здоров'я",
-                    'message': msg,
-                    'priority': 'high', 'icon': '💪',
-                    'confidence': ht_conf
-                })
-        
-        # Збираємо поради про самопочуття (wellness)
-        wellness_tips_list, wt_conf = get_fact_data('wellness_tips')
-        if isinstance(wellness_tips_list, list):
-            for msg in wellness_tips_list:
-                all_potential_tips.append({
-                    'type': 'Порада про самопочуття',
-                    'message': msg,
-                    'priority': 'medium', 'icon': '🧘',
-                    'confidence': wt_conf
-                })
-
-        # ✅ СОРТУВАННЯ: Від найвищої впевненості до найнижчої
-        all_potential_tips.sort(key=lambda x: x['confidence'], reverse=True)
-
-        # ✅ ВІДБІР: Беремо тільки ОДНУ найкращу пораду (slice [:1])
-        # Якщо хочете дві, змініть на [:2]
-        top_tips = all_potential_tips[:1]
-
-        # Додаємо у фінальний список
-        for i, tip in enumerate(top_tips):
-            recommendations['health_tips'].append({
-                'id': f'tip_{i}',
-                'type': tip['type'],
-                'message': tip['message'],
-                'priority': tip['priority'],
-                'icon': tip['icon'],
-                'confidence': tip['confidence']
-            })
-
-        # --- 4. Сповіщення (теж можна відфільтрувати, якщо хочете) ---
-        notifications_list, notif_conf = get_fact_data('notifications')
-        if isinstance(notifications_list, list):
-            # Тут поки залишаємо всі, але теж можна зробити slice [:1]
-            for i, message in enumerate(notifications_list):
-                recommendations['notifications'].append({
-                    'id': f'notification_{i}',
-                    'type': 'info', 'title': 'AI Помічник',
-                    'message': message,
-                    'priority': 'medium', 'icon': '🔔',
-                    'confidence': notif_conf
+        # 1. СЕГМЕНТАЦІЯ ВСІХ ПОРАД
+        for advice in all_advice:
+            
+            advice_text_lower = advice['text'].lower()
+            # ✅ ФІКС: Використовуємо 'text' як основний ключ
+            tip_data = {'message': advice['text'], 'confidence': advice['confidence']}
+            
+            # 1.1. ЛОГІКА КВЕСТУ: Якщо порада містить 'квест' або 'звичку'
+            if any(k in advice_text_lower for k in ['квест', 'завдання', 'звичку']):
+                quest_name = advice['text'].replace('Ви вже Дослідник! Час створити ', '').replace('.', '').strip()
+                recommendations['quests'].append({
+                    'id': f'q_{hash(quest_name)}',
+                    'name': quest_name,
+                    'difficulty': self._determine_quest_difficulty(quest_name),
+                    'xp_reward': self._calculate_quest_xp(quest_name),
+                    'category': 'progress',
+                    'suggested': True,
+                    'confidence': advice['confidence']
                 })
             
+            # 1.2. ЗДОРОВ'Я/СТРЕС:
+            elif any(k in advice_text_lower for k in ['стрес', 'розслаб', 'сидите', 'прогулянка', 'перерва', 'вигорання']):
+                health_and_wellness_tips.append(tip_data)
+            
+            # 1.3. СТАТУС/МОТИВАЦІЯ/ПРОГРЕС:
+            elif any(k in advice_text_lower for k in ['вітаємо', 'дослідник', 'продуктивність', 'ml-аналіз', 'сплануйте']):
+                status_and_progress_notifications.append(tip_data)
+
+
+        # 2. ФІЛЬТРАЦІЯ "WINNER TAKES ALL" (по категоріях)
+
+        # А) ЗДОРОВ'Я/СТРЕС: Winner Takes All (Топ-1)
+        health_and_wellness_tips.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+        if health_and_wellness_tips:
+            top_health_tip = health_and_wellness_tips[0]
+            recommendations['health_tips'].append({
+                'id': 'health_tip_final',
+                'type': f"Порада (Здоров'я, Пріоритет: {priority_score:.0f}%)",
+                # ✅ ФІКС: Використовуємо 'message'
+                'message': top_health_tip['message'],
+                'priority': priority_level,
+                # ✅ ФІКС: Використовуємо 'message' для перевірки
+                'icon': '🧘' if 'стрес' in top_health_tip['message'].lower() else '💪',
+                'confidence': top_health_tip['confidence']
+            })
+        
+        # Б) СТАТУС/ПРОГРЕС: Winner Takes All (Топ-1)
+        status_and_progress_notifications.sort(key=lambda x: x.get('confidence', 0), reverse=True)
+
+        if status_and_progress_notifications:
+            top_status_tip = status_and_progress_notifications[0]
+            recommendations['notifications'].append({
+                'id': 'status_notif_final',
+                'type': "Ваш Прогрес",
+                'title': "Ваше Нагадування",
+                'message': top_status_tip['message'],
+                'priority': priority_level,
+                'icon': '✨',
+                'confidence': top_status_tip['confidence']
+            })
+        
         return recommendations
-    # --- Допоміжні функції (з Лаб. 1) ---
-    
+
+    # --- ДОПОМІЖНІ ФУНКЦІЇ ---
+
     def _determine_quest_difficulty(self, quest_name: str) -> str:
-        if 'Перше' in quest_name or 'Знайомство' in quest_name or '5 хв' in quest_name:
+        if not quest_name: return 'easy'
+        quest_name = str(quest_name).lower()
+        if 'перше' in quest_name or 'знайомство' in quest_name or '5 хв' in quest_name:
             return 'easy'
-        elif 'Майстер' in quest_name or 'Марафон' in quest_name:
+        elif 'майстер' in quest_name or 'марафон' in quest_name:
             return 'hard'
         return 'medium'
     
     def _calculate_quest_xp(self, quest_name: str) -> int:
-        difficulty_xp = {
-            'easy': 10,
-            'medium': 25,
-            'hard': 50
-        }
         difficulty = self._determine_quest_difficulty(quest_name)
+        difficulty_xp = {'easy': 10, 'medium': 25, 'hard': 50}
         return difficulty_xp.get(difficulty, 25)
     
     def _determine_quest_category(self, quest_name: str) -> str:
-        if 'команд' in quest_name.lower():
+        if not quest_name: return 'general'
+        quest_name = str(quest_name).lower()
+        if 'команд' in quest_name:
             return 'team'
-        elif 'челендж' in quest_name.lower():
+        elif 'челендж' in quest_name:
             return 'challenge'
-        elif 'продуктивн' in quest_name.lower():
+        elif 'продуктивн' in quest_name:
             return 'productivity'
         return 'general'
-    
-    def _get_health_message(self, health_type: str) -> str:
-        messages = {
-            'Ви довго сидите': 'Ви занадто довго сидите. Час встати і порухатись!',
-            'Найкращий спосіб зняти стрес - рух': 'Фізична активність - чудовий спосіб боротьби зі стресом.'
-        }
-        return messages.get(health_type, 'Подбайте про своє здоров\'я')
-    
-    def _get_wellness_message(self, wellness_type: str) -> str:
-        messages = {
-            'Час розслабитись': 'Високий рівень стресу. Спробуйте 5-хвилинну медитацію, щоб очистити розум.',
-            'Чудовий настрій!': 'Ви виглядаєте розслабленим. Чудова робота з керування стресом!'
-        }
-        return messages.get(wellness_type, 'Подбайте про своє самопочуття')
 
 
 # --- Глобальний інстанс (без змін) ---
 _ai_service_instance = None
 
-def get_ai_service(rule_engine=None, kb=None):
-    """Отримує або створює глобальний інстанс AI сервісу"""
+def load_kb_and_engine():
+    from rule_engine import FuzzyKnowledgeBase, FuzzyInferenceEngine
+    
+    rules_file_path = Path(__file__).parent / 'data' / 'lifequest_rules.json'
+    with open(rules_file_path, 'r', encoding='utf-8') as f:
+        rules_json = json.load(f)
+        
+        kb_new = FuzzyKnowledgeBase(rules_json)
+        engine_new = FuzzyInferenceEngine(kb_new)
+        return engine_new, kb_new
+
+def get_ai_service():
     global _ai_service_instance
-    
     if _ai_service_instance is None:
-        if rule_engine is None or kb is None:
-            # Імпортуємо та створюємо нову систему
-            from rule_engine import create_rule_based_system, RuleParser
-            import json
-            from pathlib import Path
-            
-            kb_new, engine_new = create_rule_based_system()
-            
-            # Завантажуємо правила (шлях вже виправлено)
-            rules_file = Path(__file__).parent / 'data' / 'lifequest_rules.json'
-            with open(rules_file, 'r', encoding='utf-8') as f:
-                rules_data = json.load(f)
-                rules = RuleParser.parse_json_rules(rules_data)
-                kb_new.add_rules(rules)
-                print(f"--- AI SERVICE: Успішно завантажено {len(kb_new.rules)} правил.")
-            
-            _ai_service_instance = AIQuestService(engine_new, kb_new)
-        else:
-            _ai_service_instance = AIQuestService(rule_engine, kb)
-    
+        engine_new, kb_new = load_kb_and_engine()
+        _ai_service_instance = AIQuestService(engine_new, kb_new)
     return _ai_service_instance

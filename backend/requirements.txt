@@ -5,3 +5,9 @@ Flask-Cors
 google-auth
 PyJWT
 google-generativeai
+pymongo
+google-auth-oauthlib
+numpy
+scikit-learn
+pandas
+joblib
