@@ -1,56 +1,109 @@
 {
   "rules": [
     {
-      "id": "ADVICE_SITTING_LONG",
+      "id": "ADVICE_MODERATE_STRESS",
       "priority": 100,
-      "description": "Аналіз: Користувач довго сидить. Порада: Запропонувати розминку.",
-      "conditions": [{ "fact": "sitting_hours", "operator": ">=", "value": 4 }],
+      "description": "Аналіз: Помірний стрес (5-6). Порада: Нагадати про дихання.",
+      "conditions": [
+        { "fact": "stress_level", "operator": ">=", "value": 5 },
+        { "fact": "stress_level", "operator": "<", "value": 7 }
+      ],
       "actions": [
-        { "fact": "health_recommendation", "value": "Ви довго сидите" },
-        { "fact": "suggested_quest", "value": "Коротка розминка (5 хв)" },
-        { "fact": "health_priority", "value": "high" }
+        {
+          "fact": "wellness_tips",
+          "value": "Помірний стрес. Не забувайте глибоко дихати.",
+          "confidence": 0.6
+        }
       ]
     },
     {
       "id": "ADVICE_HIGH_STRESS",
-      "priority": 95,
-      "description": "Аналіз: Високий рівень стресу. Порада: Запропонувати медитацію.",
-      "conditions": [{ "fact": "stress_level", "operator": ">=", "value": 7 }],
-      "actions": [
-        { "fact": "wellness_recommendation", "value": "Час розслабитись" },
-        { "fact": "suggested_quest", "value": "Медитація (5 хв)" },
-        { "fact": "wellness_priority", "value": "high" }
-      ]
-    },
-    {
-      "id": "ADVICE_LATE_NIGHT_ACTIVITY",
-      "priority": 90,
-      "description": "Аналіз: Користувач активний пізно вночі. Порада: Запропонувати підготуватися до сну.",
-      "conditions": [{ "fact": "current_hour", "operator": ">=", "value": 23 }],
-      "actions": [
-        {
-          "fact": "notification",
-          "value": "Вже пізно. Можливо, час відпочити?"
-        },
-        { "fact": "suggested_quest", "value": "Вечірня рефлексія" }
-      ]
-    },
-    {
-      "id": "ADVICE_STRESS_AND_NO_ACTIVITY",
-      "priority": 85,
-      "description": "Аналіз: Стрес + відсутність активності. Порада: Легка прогулянка.",
+      "priority": 99,
+      "description": "Аналіз: Високий стрес (7-8). Порада: Запропонувати медитацію.",
       "conditions": [
-        { "fact": "stress_level", "operator": ">=", "value": 5 },
-        { "fact": "sitting_hours", "operator": ">=", "value": 3 },
-        { "fact": "physical_activity_today", "operator": "==", "value": 0 }
+        { "fact": "stress_level", "operator": ">=", "value": 7 },
+        { "fact": "stress_level", "operator": "<", "value": 9 }
       ],
       "actions": [
         {
-          "fact": "health_recommendation",
-          "value": "Найкращий спосіб зняти стрес - рух"
+          "fact": "wellness_tips",
+          "value": "Високий рівень стресу. Спробуйте 5-хвилинну медитацію.",
+          "confidence": 0.8
         },
-        { "fact": "suggested_quest", "value": "Прогулянка (15 хв)" },
-        { "fact": "health_priority", "value": "medium" }
+        {
+          "fact": "suggested_quest",
+          "value": "Медитація (5 хв)",
+          "confidence": 0.8
+        }
+      ]
+    },
+    {
+      "id": "ADVICE_EXTREME_STRESS",
+      "priority": 98,
+      "description": "Аналіз: Екстремальний стрес (9-10). Порада: Термінова перерва.",
+      "conditions": [{ "fact": "stress_level", "operator": ">=", "value": 9 }],
+      "actions": [
+        {
+          "fact": "wellness_tips",
+          "value": "Дуже високий стрес! Будь ласка, негайно зробіть перерву.",
+          "confidence": 0.95
+        },
+        {
+          "fact": "suggested_quest",
+          "value": "Термінова перерва (15 хв)",
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "ADVICE_MODERATE_SITTING",
+      "priority": 90,
+      "description": "Аналіз: Помірне сидіння (4-5 годин). Порада: Розминка.",
+      "conditions": [
+        { "fact": "sitting_hours", "operator": ">=", "value": 4 },
+        { "fact": "sitting_hours", "operator": "<", "value": 6 }
+      ],
+      "actions": [
+        {
+          "fact": "health_tips",
+          "value": "Ви починаєте засиджуватись. Час для короткої розминки.",
+          "confidence": 0.7
+        }
+      ]
+    },
+    {
+      "id": "ADVICE_LONG_SITTING",
+      "priority": 89,
+      "description": "Аналіз: Довге сидіння (6+ годин). Порада: Прогулянка.",
+      "conditions": [{ "fact": "sitting_hours", "operator": ">=", "value": 6 }],
+      "actions": [
+        {
+          "fact": "health_tips",
+          "value": "Ви сидите дуже довго. Потрібна невелика прогулянка.",
+          "confidence": 0.9
+        },
+        {
+          "fact": "suggested_quest",
+          "value": "Прогулянка (15 хв)",
+          "confidence": 0.9
+        }
+      ]
+    },
+    {
+      "id": "ADVICE_BURNOUT_RISK",
+      "priority": 85,
+      "description": "Аналіз: Ризик вигорання (Стрес + Сидіння + Низька продуктивність).",
+      "conditions": [
+        { "fact": "stress_level", "operator": ">=", "value": 6 },
+        { "fact": "sitting_hours", "operator": ">=", "value": 5 },
+        { "fact": "tasks_completed_today", "operator": "<=", "value": 2 }
+      ],
+      "actions": [
+        {
+          "fact": "wellness_tips",
+          "value": "Ризик перевантаження. Схоже, вам потрібна справжня перерва.",
+          "confidence": 0.75
+        }
       ]
     },
     {

@@ -1,10 +1,14 @@
 """
 AI Quest Service для LifeQuest
-Інтегрується з існуючим rule_engine.py
+* ОНОВЛЕНО ДЛЯ ЛАБОРАТОРНОЇ 2 *
+- Інтегрується з rule_engine.py, що підтримує Коефіцієнти Упевненості (CF)
+- Конвертує вхідні дані в факти з CF
+- Форматує висновки (поради, квести, статуси) для фронтенду
 """
 import json
 from pathlib import Path
 from typing import Dict, List, Any
+from datetime import datetime
 
 
 class AIQuestService:
@@ -22,245 +26,184 @@ class AIQuestService:
     def analyze_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Аналізує користувача та повертає рекомендації
-        
-        Args:
-            user_data: дані з frontend, наприклад:
-            {
-                'user_id': 123,
-                'level': 2,
-                'xp': 150,
-                'total_tasks': 25,
-                'tasks_today': 3,
-                'streak_days': 5,
-                ...
-            }
-        
-        Returns:
-            {
-                'status': 'Досвідчений',
-                'achievements': [...],
-                'quests': [...],
-                'health_tips': [...],
-                'notifications': [...],
-                'rewards': {...}
-            }
         """
-        # Очищаємо попередній стан
+        # 1. Очищаємо попередній стан
         self.kb.clear_facts()
         self.kb.reset_rule_counters()
         
-        # Конвертуємо дані користувача у факти
+        # 2. Конвертуємо дані користувача у факти (вже з CF)
         facts = self._convert_user_data_to_facts(user_data)
         
-        # Додаємо факти в базу знань
+        # 3. Додаємо факти в базу знань
         for fact in facts:
             self.kb.add_fact(fact)
         
-        # Виконуємо логічне виведення
+        # 4. Виконуємо логічне виведення (з CF)
         result = self.engine.forward_chain()
         
-        # Форматуємо результат для фронтенду
+        # 5. Форматуємо результат для фронтенду
         recommendations = self._format_recommendations(result)
         
         return recommendations
     
     def _convert_user_data_to_facts(self, user_data: Dict) -> List:
-        """Конвертує дані користувача у факти для rule engine"""
+        """
+        Конвертує дані користувача у факти для rule engine.
+        * Оновлено для Лаб. 2: додає Коефіцієнти Упевненості (CF) *
+        """
         from rule_engine import Fact
         
         facts = []
         
-        # Маппінг полів (адаптуйте під вашу структуру)
-        field_mapping = {
-            'level': 'user_level',
-            'xp': 'user_xp',
-            'total_tasks': 'total_tasks_completed',
-            'tasks_today': 'tasks_completed_today',
-            'tasks_this_week': 'tasks_completed_this_week',
-            'streak_days': 'streak_days',
-            'work_hours_today': 'work_hours_today',
-            'sitting_hours': 'sitting_hours_today',
-            'physical_activity': 'physical_activity_today',
-            'stress_level': 'stress_level',
-            'friends_count': 'friends_count',
-        }
-        
-        for frontend_key, backend_key in field_mapping.items():
-            if frontend_key in user_data:
-                facts.append(Fact(backend_key, user_data[frontend_key]))
-        
-        # Додаємо додаткові факти (значення за замовчуванням)
-        default_facts = {
-            'has_achievement_first_steps': False,
-            'has_badge_early_bird': False,
-            'meditation_done_today': False,
-            'anniversary_celebrated': False,
-            'prefers_team_quests': user_data.get('prefers_team_quests', False),
-            'career_goal_active': user_data.get('career_goal_active', False),
-        }
-        
-        for key, value in default_facts.items():
-            if key not in [f.name for f in facts]:
-                facts.append(Fact(key, value))
+        # --- Об'єктивні факти (CF = 1.0) ---
+        facts.append(Fact('user_level', user_data.get('level', 1), confidence=1.0))
+        facts.append(Fact('user_xp', user_data.get('xp', 0), confidence=1.0))
+        facts.append(Fact('total_tasks', user_data.get('total_tasks', 0), confidence=1.0))
+        facts.append(Fact('tasks_completed_today', user_data.get('tasks_completed_today', 0), confidence=1.0))
+        facts.append(Fact('tasks_completed_this_week', user_data.get('tasks_completed_this_week', 0), confidence=1.0))
+        facts.append(Fact('streak_days', user_data.get('streak_days', 0), confidence=1.0))
+        facts.append(Fact('friends_count', user_data.get('friends_count', 0), confidence=1.0))
+        facts.append(Fact('account_age_days', user_data.get('account_age_days', 1), confidence=1.0))
+
+        # --- Суб'єктивні факти (CF < 1.0) ---
+        # (Припускаємо, що дані від користувача не є 100% точними)
+        facts.append(Fact('stress_level', user_data.get('stress_level'), confidence=0.9)) # Ми на 90% впевнені
+        facts.append(Fact('sitting_hours', user_data.get('sitting_hours'), confidence=0.8)) # На 80% впевнені
+        facts.append(Fact('physical_activity_today', user_data.get('physical_activity_today', 0), confidence=0.8))
+
+        # --- Контекстні факти (CF = 1.0) ---
+        facts.append(Fact('current_hour', datetime.now().hour, confidence=1.0))
         
         return facts
     
+    # В файлі ai_quest_service.py
+
     def _format_recommendations(self, inference_result: Dict) -> Dict[str, Any]:
-        """Форматує результати виведення для фронтенду"""
+        """
+        Форматує результати виведення для фронтенду.
+        * ОНОВЛЕНО: Фільтрує поради, залишаючи тільки НАЙВАЖЛИВІШІ (Top-1). *
+        """
         recommendations = {
             'status': None,
-            'level_info': {},
-            'achievements': [],
             'quests': [],
             'health_tips': [],
             'notifications': [],
-            'rewards': {},
             'analytics': {
                 'rules_fired': len(inference_result.get('rules_fired', [])),
-                'new_facts': inference_result.get('new_facts_count', 0)
+                'new_facts': inference_result.get('new_facts_count', 0),
+                'final_facts': inference_result.get('final_facts', {})
             }
         }
         
-        # Статус користувача
-        if self.kb.has_fact('user_status'):
-            recommendations['status'] = self.kb.get_fact('user_status').value
-        
-        # Інформація про рівень
-        if self.kb.has_fact('user_level'):
-            recommendations['level_info']['current_level'] = self.kb.get_fact('user_level').value
-        
-        if self.kb.has_fact('user_xp'):
-            recommendations['level_info']['current_xp'] = self.kb.get_fact('user_xp').value
-        
-        if self.kb.has_fact('level_up_reward'):
-            recommendations['level_info']['level_up_reward'] = self.kb.get_fact('level_up_reward').value
-        
-        # Досягнення
-        if self.kb.has_fact('achievement_earned'):
-            achievement_name = self.kb.get_fact('achievement_earned').value
-            achievement_xp = self.kb.get_fact('user_xp').value if self.kb.has_fact('user_xp') else 0
-            
-            recommendations['achievements'].append({
-                'id': f'achievement_{len(recommendations["achievements"])}',
-                'name': achievement_name,
-                'xp_reward': achievement_xp,
-                'icon': '🏆',
-                'timestamp': 'now'
-            })
-        
-        # Бейджі
-        if self.kb.has_fact('badge_earned'):
-            badge_name = self.kb.get_fact('badge_earned').value
-            recommendations['achievements'].append({
-                'id': f'badge_{len(recommendations["achievements"])}',
-                'name': badge_name,
-                'type': 'badge',
-                'icon': '🎖️',
-                'timestamp': 'now'
-            })
-        
-        # Квести
-        if self.kb.has_fact('available_quests'):
-            quests_value = self.kb.get_fact('available_quests').value
-            if isinstance(quests_value, list):
-                for quest_name in quests_value:
+        def get_fact_data(name):
+            if self.kb.has_fact(name):
+                fact = self.kb.get_fact(name)
+                return fact.value, fact.confidence
+            return None, 0.0
+
+        # --- 1. Статус користувача ---
+        status, status_conf = get_fact_data('user_status')
+        if status:
+            recommendations['status'] = f"{status} (Впевненість: {status_conf*100:.0f}%)"
+
+        # --- 2. Рекомендовані квести ---
+        quests_val, quest_conf = get_fact_data('available_quests')
+        if isinstance(quests_val, list):
+            for i, quest_name in enumerate(quests_val):
+                if not any(q['name'] == quest_name for q in recommendations['quests']):
                     recommendations['quests'].append({
-                        'id': f'quest_{len(recommendations["quests"])}',
+                        'id': f'quest_avail_{i}',
                         'name': quest_name,
                         'difficulty': self._determine_quest_difficulty(quest_name),
                         'xp_reward': self._calculate_quest_xp(quest_name),
-                        'category': self._determine_quest_category(quest_name)
+                        'category': self._determine_quest_category(quest_name),
+                        'confidence': quest_conf
                     })
         
-        # Додатковий запропонований квест
-        if self.kb.has_fact('suggested_quest'):
-            suggested = self.kb.get_fact('suggested_quest').value
-            recommendations['quests'].append({
-                'id': f'quest_suggested',
-                'name': suggested,
-                'difficulty': 'medium',
-                'xp_reward': 20,
-                'category': 'health',
-                'suggested': True
-            })
+        suggested_quests_list, sg_conf = get_fact_data('suggested_quest')
+        if isinstance(suggested_quests_list, list):
+            # ✅ СОРТУВАННЯ КВЕСТІВ: Можемо показати топ-2 квести
+            # (тут логіка простіша, бо квестів може бути декілька)
+            for i, quest_name in enumerate(suggested_quests_list):
+                 if not any(q['name'] == quest_name for q in recommendations['quests']):
+                    recommendations['quests'].append({
+                        'id': f'quest_suggested_{i}',
+                        'name': quest_name,
+                        'difficulty': 'easy', 
+                        'xp_reward': 10, 
+                        'category': 'health',
+                        'suggested': True, 
+                        'confidence': sg_conf
+                    })
+
+        # --- 3. ПОРАДИ (ЛОГІКА "WINNER TAKES ALL") ---
         
-        # Рекомендації здоров'я
-        if self.kb.has_fact('health_recommendation'):
-            health_type = self.kb.get_fact('health_recommendation').value
-            health_quest = self.kb.get_fact('suggested_quest').value if self.kb.has_fact('suggested_quest') else None
-            
+        all_potential_tips = []
+
+        # Збираємо поради про здоров'я
+        health_tips_list, ht_conf = get_fact_data('health_tips')
+        if isinstance(health_tips_list, list):
+            for msg in health_tips_list:
+                all_potential_tips.append({
+                    'type': "Порада про здоров'я",
+                    'message': msg,
+                    'priority': 'high', 'icon': '💪',
+                    'confidence': ht_conf
+                })
+        
+        # Збираємо поради про самопочуття (wellness)
+        wellness_tips_list, wt_conf = get_fact_data('wellness_tips')
+        if isinstance(wellness_tips_list, list):
+            for msg in wellness_tips_list:
+                all_potential_tips.append({
+                    'type': 'Порада про самопочуття',
+                    'message': msg,
+                    'priority': 'medium', 'icon': '🧘',
+                    'confidence': wt_conf
+                })
+
+        # ✅ СОРТУВАННЯ: Від найвищої впевненості до найнижчої
+        all_potential_tips.sort(key=lambda x: x['confidence'], reverse=True)
+
+        # ✅ ВІДБІР: Беремо тільки ОДНУ найкращу пораду (slice [:1])
+        # Якщо хочете дві, змініть на [:2]
+        top_tips = all_potential_tips[:1]
+
+        # Додаємо у фінальний список
+        for i, tip in enumerate(top_tips):
             recommendations['health_tips'].append({
-                'id': f'health_{len(recommendations["health_tips"])}',
-                'type': health_type,
-                'message': self._get_health_message(health_type),
-                'quest': health_quest,
-                'priority': 'high',
-                'icon': '💪'
+                'id': f'tip_{i}',
+                'type': tip['type'],
+                'message': tip['message'],
+                'priority': tip['priority'],
+                'icon': tip['icon'],
+                'confidence': tip['confidence']
             })
-        
-        # Wellness рекомендації
-        if self.kb.has_fact('wellness_recommendation'):
-            wellness_type = self.kb.get_fact('wellness_recommendation').value
-            wellness_quest = self.kb.get_fact('wellness_quest').value if self.kb.has_fact('wellness_quest') else None
+
+        # --- 4. Сповіщення (теж можна відфільтрувати, якщо хочете) ---
+        notifications_list, notif_conf = get_fact_data('notifications')
+        if isinstance(notifications_list, list):
+            # Тут поки залишаємо всі, але теж можна зробити slice [:1]
+            for i, message in enumerate(notifications_list):
+                recommendations['notifications'].append({
+                    'id': f'notification_{i}',
+                    'type': 'info', 'title': 'AI Помічник',
+                    'message': message,
+                    'priority': 'medium', 'icon': '🔔',
+                    'confidence': notif_conf
+                })
             
-            recommendations['health_tips'].append({
-                'id': f'wellness_{len(recommendations["health_tips"])}',
-                'type': wellness_type,
-                'message': self._get_wellness_message(wellness_type),
-                'quest': wellness_quest,
-                'priority': 'medium',
-                'icon': '🧘'
-            })
-        
-        # Нагадування
-        if self.kb.has_fact('reminder_type'):
-            reminder_type = self.kb.get_fact('reminder_type').value
-            reminder_action = self.kb.get_fact('suggested_activity').value if self.kb.has_fact('suggested_activity') else None
-            
-            recommendations['notifications'].append({
-                'id': f'reminder_{len(recommendations["notifications"])}',
-                'type': 'reminder',
-                'title': reminder_type,
-                'message': reminder_action or 'Подбайте про себе!',
-                'priority': 'high',
-                'icon': '🔔'
-            })
-        
-        # Серії та бонуси
-        if self.kb.has_fact('streak_milestone'):
-            streak_msg = self.kb.get_fact('streak_milestone').value
-            recommendations['notifications'].append({
-                'id': 'streak_notification',
-                'type': 'achievement',
-                'title': 'Вітаємо!',
-                'message': streak_msg,
-                'priority': 'medium',
-                'icon': '🔥'
-            })
-        
-        # Винагороди
-        if self.kb.has_fact('level_up_reward'):
-            recommendations['rewards']['level_up'] = self.kb.get_fact('level_up_reward').value
-        
-        if self.kb.has_fact('streak_bonus_active'):
-            recommendations['rewards']['streak_bonus'] = True
-            recommendations['rewards']['xp_multiplier'] = self.kb.get_fact('xp_multiplier').value if self.kb.has_fact('xp_multiplier') else 1.0
-        
-        if self.kb.has_fact('daily_bonus'):
-            recommendations['rewards']['daily_bonus'] = self.kb.get_fact('daily_bonus').value
-        
         return recommendations
+    # --- Допоміжні функції (з Лаб. 1) ---
     
     def _determine_quest_difficulty(self, quest_name: str) -> str:
-        """Визначає складність квесту"""
-        if 'Перше' in quest_name or 'Знайомство' in quest_name:
+        if 'Перше' in quest_name or 'Знайомство' in quest_name or '5 хв' in quest_name:
             return 'easy'
         elif 'Майстер' in quest_name or 'Марафон' in quest_name:
             return 'hard'
         return 'medium'
     
     def _calculate_quest_xp(self, quest_name: str) -> int:
-        """Розраховує XP за квест"""
         difficulty_xp = {
             'easy': 10,
             'medium': 25,
@@ -270,7 +213,6 @@ class AIQuestService:
         return difficulty_xp.get(difficulty, 25)
     
     def _determine_quest_category(self, quest_name: str) -> str:
-        """Визначає категорію квесту"""
         if 'команд' in quest_name.lower():
             return 'team'
         elif 'челендж' in quest_name.lower():
@@ -280,25 +222,22 @@ class AIQuestService:
         return 'general'
     
     def _get_health_message(self, health_type: str) -> str:
-        """Повертає повідомлення для рекомендації здоров'я"""
         messages = {
-            'Рекомендована фізична активність': 'Ви довго сидите. Час порухатись!',
-            'Перерва': 'Зробіть коротку перерву для відновлення енергії',
+            'Ви довго сидите': 'Ви занадто довго сидите. Час встати і порухатись!',
+            'Найкращий спосіб зняти стрес - рух': 'Фізична активність - чудовий спосіб боротьби зі стресом.'
         }
         return messages.get(health_type, 'Подбайте про своє здоров\'я')
     
     def _get_wellness_message(self, wellness_type: str) -> str:
-        """Повертає повідомлення для wellness рекомендації"""
         messages = {
-            'Медитація': 'Високий рівень стресу. Спробуйте медитацію.',
-            'Релаксація': 'Час відпочити та розслабитись',
+            'Час розслабитись': 'Високий рівень стресу. Спробуйте 5-хвилинну медитацію, щоб очистити розум.',
+            'Чудовий настрій!': 'Ви виглядаєте розслабленим. Чудова робота з керування стресом!'
         }
         return messages.get(wellness_type, 'Подбайте про своє самопочуття')
 
 
-# Глобальний інстанс для використання в app.py
+# --- Глобальний інстанс (без змін) ---
 _ai_service_instance = None
-
 
 def get_ai_service(rule_engine=None, kb=None):
     """Отримує або створює глобальний інстанс AI сервісу"""
@@ -313,11 +252,13 @@ def get_ai_service(rule_engine=None, kb=None):
             
             kb_new, engine_new = create_rule_based_system()
             
-            # Завантажуємо правила
+            # Завантажуємо правила (шлях вже виправлено)
             rules_file = Path(__file__).parent / 'data' / 'lifequest_rules.json'
             with open(rules_file, 'r', encoding='utf-8') as f:
-                rules = RuleParser.parse_json_rules(json.load(f))
+                rules_data = json.load(f)
+                rules = RuleParser.parse_json_rules(rules_data)
                 kb_new.add_rules(rules)
+                print(f"--- AI SERVICE: Успішно завантажено {len(kb_new.rules)} правил.")
             
             _ai_service_instance = AIQuestService(engine_new, kb_new)
         else:

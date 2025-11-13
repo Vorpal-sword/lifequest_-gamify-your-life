@@ -248,22 +248,16 @@ def create_task(current_user):
     created_task = tasks_collection.find_one({'_id': result.inserted_id})
     return jsonify(serialize_doc(created_task)), 201
 
-# [PUT] /api/tasks/<task_id>/toggle - Переключити статус виконання завдання
+# В app.py
 @app.route('/api/tasks/<task_id>/toggle', methods=['PUT'])
 @token_required
 def toggle_task(current_user, task_id):
     try:
+        # ... (ваш код пошуку 'task' та перевірки доступу) ...
         task = tasks_collection.find_one({'_id': ObjectId(task_id)})
         if not task:
             return jsonify({'message': 'Task not found'}), 404
-        
-        is_group_quest = task.get('questOriginGroupId')
-        if is_group_quest:
-            group = groups_collection.find_one({'_id': ObjectId(task['questOriginGroupId'])})
-            if not group or str(current_user['_id']) not in group.get('members', []):
-                return jsonify({'message': 'Access denied to this group quest'}), 403
-        elif task.get('userId') != str(current_user['_id']):
-            return jsonify({'message': 'Access denied'}), 403
+        # ... (ваші перевірки 'is_group_quest' і 'userId') ...
 
         is_already_completed = task.get('completed', False)
         new_status = not is_already_completed
@@ -275,8 +269,20 @@ def toggle_task(current_user, task_id):
             xp_to_change = task.get('xp', 0)
             currency_to_change = task.get('currencyReward', 0)
         else:
-            xp_to_change = -task.get('xp', 0)
-            currency_to_change = -task.get('currencyReward', 0)
+            # ✅ ПОКРАЩЕНА ЛОГІКА ЗНЯТТЯ XP:
+            xp_to_subtract = task.get('xp', 0)
+            currency_to_subtract = task.get('currencyReward', 0)
+            
+            # Переконуємось, що XP не стане від'ємним
+            current_xp = current_user.get('xp', 0)
+            xp_to_change = -xp_to_subtract if (current_xp >= xp_to_subtract) else -current_xp
+            
+            # Переконуємось, що валюта не стане від'ємною
+            current_currency = current_user.get('currency', 0)
+            currency_to_change = -currency_to_subtract if (current_currency >= currency_to_subtract) else -current_currency
+
+        # ... (ваш код логіки 'daily_bonus_amount') ...
+        # (Якщо ви додали логіку щоденного бонусу, вона залишається тут)
 
         # 1. Оновлюємо статистику користувача
         if xp_to_change != 0 or currency_to_change != 0:
@@ -291,7 +297,7 @@ def toggle_task(current_user, task_id):
             {'$set': {'completed': new_status}}
         )
         
-        # 3. ✅ ОНОВЛЕНО: Перевіряємо підвищення рівня
+        # 3. Перевіряємо підвищення рівня
         updated_user = check_and_apply_level_up(current_user['_id'])
         
         # 4. Повертаємо оновлені дані
@@ -358,14 +364,14 @@ def create_habit(current_user):
     created_habit = habits_collection.find_one({'_id': result.inserted_id})
     return jsonify(serialize_doc(created_habit)), 201
     
-# [PUT] /api/habits/<habit_id>/toggle - Відмітити день у звичці
+# В app.py
 @app.route('/api/habits/<habit_id>/toggle', methods=['PUT'])
 @token_required
 def toggle_habit_day(current_user, habit_id):
     try:
+        # ... (ваш код пошуку 'habit' та 'day_number') ...
         data = request.get_json()
         day_number = str(data.get('dayNumber'))
-        
         habit = habits_collection.find_one({'_id': ObjectId(habit_id), 'userId': str(current_user['_id'])})
         if not habit:
             return jsonify({'message': 'Habit not found or access denied'}), 404
@@ -380,8 +386,15 @@ def toggle_habit_day(current_user, habit_id):
             xp_to_change = habit.get('xpPerDay', 0)
             currency_to_change = habit.get('currencyRewardPerDay', 0)
         elif current_status == 'completed':
-            xp_to_change = -habit.get('xpPerDay', 0)
-            currency_to_change = -habit.get('currencyRewardPerDay', 0)
+            # ✅ ПОКРАЩЕНА ЛОГІКА ЗНЯТТЯ XP:
+            xp_to_subtract = habit.get('xpPerDay', 0)
+            currency_to_subtract = habit.get('currencyRewardPerDay', 0)
+
+            current_xp = current_user.get('xp', 0)
+            xp_to_change = -xp_to_subtract if (current_xp >= xp_to_subtract) else -current_xp
+
+            current_currency = current_user.get('currency', 0)
+            currency_to_change = -currency_to_subtract if (current_currency >= currency_to_subtract) else -current_currency
 
         # 1. Оновлюємо статистику користувача
         if xp_to_change != 0 or currency_to_change != 0:
@@ -394,7 +407,7 @@ def toggle_habit_day(current_user, habit_id):
         update_query = {f'history.{day_number}': new_status}
         habits_collection.update_one({'_id': ObjectId(habit_id)}, {'$set': update_query})
 
-        # 3. ✅ ОНОВЛЕНО: Перевіряємо підвищення рівня
+        # 3. Перевіряємо підвищення рівня
         updated_user = check_and_apply_level_up(current_user['_id'])
         
         # 4. Повертаємо оновлені дані
@@ -547,30 +560,71 @@ def ai_analyze_secure(current_user):
     try:
         client_data = request.get_json() or {}
         
-        # ✅ ОНОВЛЕНО: Перевіряємо рівень ДО того, як віддати дані в AI
+        # Перевіряємо рівень ДО того, як віддати дані в AI
         current_user = check_and_apply_level_up(current_user['_id'])
         user_id = str(current_user['_id'])
         
+        # --- ✅ РОЗШИРЕНИЙ ЗБІР ФАКТІВ ДЛЯ ЛАБ. 2 ---
+        
+        # 1. Рахуємо завдання
         total_tasks = tasks_collection.count_documents({'userId': user_id})
+        
+        # 2. Рахуємо сьогоднішні завдання
         tasks_today = tasks_collection.count_documents({
             'userId': user_id, 
             'type': 'daily', 
             'completed': True 
         })
+        
+        # 3. Рахуємо завдання за тиждень (НОВЕ)
+        one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        tasks_this_week = tasks_collection.count_documents({
+            'userId': user_id,
+            'completed': True,
+            'completedAt': {'$gte': one_week_ago} # Примітка: для цього вам потрібно зберігати 'completedAt' при виконанні
+        })
+        # (Простіший варіант, якщо 'completedAt' немає - просто рахуємо всі)
+        # tasks_this_week = tasks_collection.count_documents({'userId': user_id, 'completed': True})
 
+
+        # 4. Рахуємо вік акаунту (НОВЕ)
+        account_age_days = 1
+        if current_user.get('createdAt'):
+            account_age_days = (datetime.now(timezone.utc) - current_user.get('createdAt')).days
+            if account_age_days == 0:
+                account_age_days = 1
+
+        # 5. Формуємо повний об'єкт для AI
         user_data_for_ai = {
             "user_id": user_id,
             "level": current_user.get('level'),
             "xp": current_user.get('xp'),
-            "total_tasks": total_tasks,
-            "tasks_today": tasks_today, 
             "streak_days": current_user.get('streaks', {}).get('dailyTasks', 0),
+            "friends_count": len(current_user.get('friends', [])),
+            
+            # Нові факти, яких вимагають правила
+            "total_tasks": total_tasks,
+            "tasks_completed_today": tasks_today,
+            "tasks_completed_this_week": tasks_this_week,
+            "account_age_days": account_age_days,
+
+            # Суб'єктивні факти з клієнта
             "stress_level": client_data.get('stress_level'),
-            "sitting_hours": client_data.get('sitting_hours')
+            "sitting_hours": client_data.get('sitting_hours'),
+            "physical_activity_today": client_data.get('physical_activity_today')
         }
         
+        # (Вивід у термінал для відладки)
+        print("\n--- 1. ДАНІ НА ВХІД В AI ---")
+        print(user_data_for_ai)
+        print("----------------------------")
+
         ai_service = get_ai_service()
         recommendations = ai_service.analyze_user(user_data_for_ai)
+        
+        print("--- 2. РЕЗУЛЬТАТ РОБОТИ AI ---")
+        print(recommendations)
+        print("----------------------------\n")
         
         return jsonify({
             'success': True,
